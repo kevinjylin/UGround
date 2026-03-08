@@ -17,6 +17,11 @@ interface SpotifyArtistsResponse {
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
+const wait = async (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 const getAccessToken = async (): Promise<string> => {
   if (!env.spotifyClientId || !env.spotifyClientSecret) {
     throw new Error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET");
@@ -64,19 +69,44 @@ export const getSpotifyArtistsByIds = async (ids: string[]): Promise<SpotifyArti
     return [];
   }
 
-  const token = await getAccessToken();
-  const response = await fetch(`https://api.spotify.com/v1/artists?ids=${encodeURIComponent(cleaned.join(","))}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
+  let token = await getAccessToken();
 
-  if (!response.ok) {
-    throw new Error(`Spotify artists request failed (${response.status})`);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(
+      `https://api.spotify.com/v1/artists?ids=${encodeURIComponent(cleaned.join(","))}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      },
+    );
+
+    if (response.ok) {
+      const body = (await response.json()) as SpotifyArtistsResponse;
+      return body.artists ?? [];
+    }
+
+    const errorText = await response.text();
+
+    if ((response.status === 401 || response.status === 403) && attempt < 1) {
+      cachedToken = null;
+      token = await getAccessToken();
+      continue;
+    }
+
+    if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      const retryAfterSeconds = Number(response.headers.get("Retry-After") ?? "0");
+      const delayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds * 1000 : 600;
+      await wait(delayMs);
+      continue;
+    }
+
+    throw new Error(
+      `Spotify artists request failed (${response.status}): ${errorText.slice(0, 280) || "no response body"}`,
+    );
   }
 
-  const body = (await response.json()) as SpotifyArtistsResponse;
-  return body.artists ?? [];
+  throw new Error("Spotify artists request failed after retries");
 };
