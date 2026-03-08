@@ -37,6 +37,26 @@ const shortDate = (value: string | null): string => {
   return new Date(value).toLocaleString();
 };
 
+const formatWatchLocation = (artist: WatchArtist): string => {
+  const city = artist.city?.trim() || "";
+  const state = artist.state?.trim() || "";
+  const country = artist.country?.trim() || "US";
+
+  if (city && state) {
+    return `${city}, ${state}, ${country}`;
+  }
+
+  if (city) {
+    return `${city}, ${country}`;
+  }
+
+  if (state) {
+    return `Any city in ${state}, ${country}`;
+  }
+
+  return `Any city, ${country}`;
+};
+
 export default function Home() {
   const [artists, setArtists] = useState<WatchArtist[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
@@ -307,7 +327,7 @@ export default function Home() {
                 <div>
                   <strong>{artist.name}</strong>
                   <p>
-                    {(artist.city || "Any city") + ", " + (artist.country || "US")}
+                    {formatWatchLocation(artist)}
                     {artist.spotify_id ? ` · Spotify: ${artist.spotify_id}` : ""}
                   </p>
                 </div>

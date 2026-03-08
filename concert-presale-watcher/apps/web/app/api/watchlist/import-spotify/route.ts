@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeState } from "../../../../lib/state";
 import { getSpotifyArtistsByIds } from "../../../../lib/sources/spotify";
 import { createWatchArtist } from "../../../../lib/supabase";
 
@@ -41,6 +42,8 @@ export async function POST(request: Request) {
     }
 
     const spotifyArtists = await getSpotifyArtistsByIds(artistIds);
+    const normalizedState = normalizeState(body.state?.trim());
+    const normalizedCountry = body.country?.trim().toUpperCase() || "US";
 
     const created = [];
 
@@ -49,8 +52,8 @@ export async function POST(request: Request) {
         name: artist.name,
         spotifyId: artist.id,
         city: body.city?.trim() || undefined,
-        state: body.state?.trim() || undefined,
-        country: body.country?.trim() || "US",
+        state: normalizedState ?? undefined,
+        country: normalizedCountry,
       });
 
       created.push(saved);

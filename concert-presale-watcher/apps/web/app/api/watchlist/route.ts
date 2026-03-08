@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeState } from "../../../lib/state";
 import { createWatchArtist, listWatchArtists } from "../../../lib/supabase";
 
 interface CreateWatchArtistRequest {
@@ -38,12 +39,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const normalizedState = normalizeState(body.state?.trim());
+    const normalizedCountry = body.country?.trim().toUpperCase() || "US";
+
     const artist = await createWatchArtist({
       name: body.name.trim(),
       spotifyId: body.spotifyId?.trim() || undefined,
       city: body.city?.trim() || undefined,
-      state: body.state?.trim() || undefined,
-      country: body.country?.trim() || "US",
+      state: normalizedState ?? undefined,
+      country: normalizedCountry,
     });
 
     return NextResponse.json({ artist }, { status: 201 });
