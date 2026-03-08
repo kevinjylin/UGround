@@ -1,0 +1,255 @@
+:root {
+  --bg: #f3f5f4;
+  --ink: #13231f;
+  --panel: rgba(255, 255, 255, 0.85);
+  --edge: rgba(19, 35, 31, 0.18);
+  --accent: #f04f24;
+  --accent-2: #207868;
+  --muted: #4a5d57;
+  --danger: #ae1d2b;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 10%, rgba(240, 79, 36, 0.2), transparent 45%),
+    radial-gradient(circle at 90% 0%, rgba(32, 120, 104, 0.2), transparent 45%),
+    linear-gradient(140deg, #eaf1ee, #f9f5ef 40%, #edf5f2);
+  font-family: var(--font-geist-sans), "Avenir Next", "Segoe UI", sans-serif;
+  line-height: 1.45;
+  padding: 28px 18px 60px;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.pageShell {
+  margin: 0 auto;
+  max-width: 1180px;
+  display: grid;
+  gap: 18px;
+}
+
+.hero {
+  border: 1px solid var(--edge);
+  border-radius: 24px;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.95), rgba(255, 245, 237, 0.86));
+  padding: clamp(20px, 3vw, 34px);
+  box-shadow: 0 16px 40px rgba(19, 35, 31, 0.08);
+}
+
+.hero .kicker {
+  color: var(--accent);
+  font-family: var(--font-geist-mono), "Fira Mono", monospace;
+  font-size: 0.84rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.hero h1 {
+  font-size: clamp(1.7rem, 3vw, 2.7rem);
+  margin-bottom: 8px;
+}
+
+.hero p {
+  color: var(--muted);
+  max-width: 76ch;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+}
+
+.statsRow {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.twoCol {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel {
+  border: 1px solid var(--edge);
+  border-radius: 18px;
+  background: var(--panel);
+  backdrop-filter: blur(4px);
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(19, 35, 31, 0.07);
+}
+
+.panel h2 {
+  margin-bottom: 10px;
+  font-size: 1.25rem;
+}
+
+.panel h3 {
+  margin-top: 14px;
+  margin-bottom: 8px;
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.statPanel span {
+  color: var(--muted);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.statPanel strong {
+  font-size: 1.8rem;
+}
+
+.stack {
+  display: grid;
+  gap: 8px;
+}
+
+.inlineInputs {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+input,
+textarea {
+  border: 1px solid rgba(19, 35, 31, 0.28);
+  border-radius: 11px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+button {
+  border: none;
+  border-radius: 11px;
+  padding: 10px 12px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), #e96f2f);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(240, 79, 36, 0.35);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+  transform: none;
+  box-shadow: none;
+}
+
+.pollBox {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.list {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.listItem {
+  border: 1px solid rgba(19, 35, 31, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.listItem p {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.listItem a {
+  align-self: center;
+  padding: 6px 9px;
+  border-radius: 9px;
+  font-size: 0.85rem;
+  border: 1px solid rgba(19, 35, 31, 0.22);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.dangerButton {
+  align-self: center;
+  background: linear-gradient(135deg, var(--danger), #cc2745);
+}
+
+.pill {
+  align-self: center;
+  border: 1px solid rgba(19, 35, 31, 0.18);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.emptyState {
+  color: var(--muted);
+  padding: 8px;
+}
+
+.muted {
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+.healthPanel .healthGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  color: var(--muted);
+}
+
+.errorBanner {
+  border: 1px solid rgba(174, 29, 43, 0.35);
+  background: rgba(255, 228, 232, 0.85);
+  color: #731d29;
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+@media (max-width: 940px) {
+  .statsRow {
+    grid-template-columns: 1fr;
+  }
+
+  .twoCol {
+    grid-template-columns: 1fr;
+  }
+
+  .inlineInputs {
+    grid-template-columns: 1fr;
+  }
+
+  .healthPanel .healthGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,100 @@
+export type SourceSlug = "ticketmaster" | "eventbrite" | "manual";
+
+export type EventStatus =
+  | "onsale"
+  | "offsale"
+  | "cancelled"
+  | "postponed"
+  | "rescheduled"
+  | "scheduled"
+  | "unknown";
+
+export type AlertType =
+  | "new_event"
+  | "status_changed"
+  | "ticket_url_changed"
+  | "on_sale_moved_earlier";
+
+export interface WatchArtist {
+  id: string;
+  name: string;
+  spotify_id: string | null;
+  city: string | null;
+  state: string | null;
+  country: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventRecord {
+  id: string;
+  source_slug: SourceSlug;
+  source_event_id: string;
+  watch_artist_id: string | null;
+  artist_name: string;
+  title: string;
+  venue: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  start_time: string | null;
+  ticket_url: string | null;
+  status: EventStatus;
+  on_sale_start: string | null;
+  dedupe_key: string;
+  last_seen_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SnapshotRecord {
+  id: string;
+  event_id: string;
+  checked_at: string;
+  raw_json_hash: string;
+  raw_json: unknown;
+}
+
+export interface AlertRecord {
+  id: string;
+  event_id: string;
+  alert_type: AlertType;
+  message: string;
+  payload: Record<string, unknown>;
+  sent_channels: string[];
+  sent_at: string | null;
+  created_at: string;
+}
+
+export interface NormalizedEvent {
+  source_slug: SourceSlug;
+  source_event_id: string;
+  watch_artist_id: string;
+  artist_name: string;
+  title: string;
+  venue: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  start_time: string | null;
+  ticket_url: string | null;
+  status: EventStatus;
+  on_sale_start: string | null;
+  dedupe_key: string;
+  raw_json: unknown;
+}
+
+export interface PollResult {
+  checkedArtists: number;
+  fetchedEvents: number;
+  dedupedEvents: number;
+  newEvents: number;
+  changedEvents: number;
+  alertsCreated: number;
+  startedAt: string;
+  endedAt: string;
+}
+
+export interface PollRequestBody {
+  city?: string;
+}

@@ -1,5 +1,8 @@
 # Concert-Track
 
-## This is a website made to monitor osamason and nettspend concert presales, in case u dont wanna const check their igs
+Watch-and-alert MVP for concert presales.
 
-Made with love by kev
+Main workspace: [`concert-presale-watcher`](./concert-presale-watcher)
+
+Start there for setup instructions:
+- [`concert-presale-watcher/README.md`](./concert-presale-watcher/README.md)
