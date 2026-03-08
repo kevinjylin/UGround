@@ -29,6 +29,7 @@ interface TicketmasterEvent {
   };
   _embedded?: {
     venues?: TicketmasterVenue[];
+    attractions?: Array<{ name?: string }>;
   };
 }
 
@@ -38,42 +39,20 @@ interface TicketmasterResponse {
   };
 }
 
-export const fetchTicketmasterEvents = async (artist: WatchArtist): Promise<NormalizedEvent[]> => {
-  if (!env.ticketmasterApiKey) {
-    return [];
-  }
+const isLikelyArtistMatch = (artistName: string, event: TicketmasterEvent): boolean => {
+  const artistLower = artistName.toLowerCase();
+  const titleMatch = (event.name ?? "").toLowerCase().includes(artistLower);
+  const attractionMatch =
+    event._embedded?.attractions?.some((attraction) =>
+      (attraction.name ?? "").toLowerCase().includes(artistLower),
+    ) ?? false;
 
-  const params = new URLSearchParams({
-    apikey: env.ticketmasterApiKey,
-    keyword: artist.name,
-    size: "40",
-    sort: "date,asc",
-  });
+  return titleMatch || attractionMatch;
+};
 
-  if (artist.city) {
-    params.set("city", artist.city);
-  }
-
-  if (artist.country) {
-    params.set("countryCode", artist.country);
-  }
-
-  const response = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?${params.toString()}`, {
-    headers: {
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ticketmaster request failed (${response.status}) for artist ${artist.name}`);
-  }
-
-  const body = (await response.json()) as TicketmasterResponse;
-  const events = body._embedded?.events ?? [];
-
+const normalizeEvents = (artist: WatchArtist, events: TicketmasterEvent[]): NormalizedEvent[] => {
   return events
-    .filter((event) => Boolean(event.id))
+    .filter((event) => Boolean(event.id) && isLikelyArtistMatch(artist.name, event))
     .map((event) => {
       const venue = event._embedded?.venues?.[0];
       const startTime = asIsoOrNull(event.dates?.start?.dateTime ?? event.dates?.start?.localDate ?? null);
@@ -96,4 +75,53 @@ export const fetchTicketmasterEvents = async (artist: WatchArtist): Promise<Norm
         raw_json: event,
       } satisfies NormalizedEvent;
     });
+};
+
+const runTicketmasterQuery = async (artist: WatchArtist, withLocation: boolean): Promise<TicketmasterEvent[]> => {
+  const params = new URLSearchParams({
+    apikey: env.ticketmasterApiKey as string,
+    keyword: artist.name,
+    classificationName: "music",
+    includeTest: "no",
+    size: "100",
+    sort: "date,asc",
+  });
+
+  if (withLocation && artist.city) {
+    params.set("city", artist.city);
+  }
+
+  if (withLocation && artist.country && artist.country.length === 2) {
+    params.set("countryCode", artist.country);
+  }
+
+  const response = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?${params.toString()}`, {
+    headers: {
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Ticketmaster request failed (${response.status}) for artist ${artist.name}: ${body.slice(0, 220)}`);
+  }
+
+  const body = (await response.json()) as TicketmasterResponse;
+  return body._embedded?.events ?? [];
+};
+
+export const fetchTicketmasterEvents = async (artist: WatchArtist): Promise<NormalizedEvent[]> => {
+  if (!env.ticketmasterApiKey) {
+    return [];
+  }
+
+  const withLocation = Boolean(artist.city || artist.country);
+  let events = await runTicketmasterQuery(artist, withLocation);
+
+  if (events.length === 0 && withLocation) {
+    events = await runTicketmasterQuery(artist, false);
+  }
+
+  return normalizeEvents(artist, events);
 };

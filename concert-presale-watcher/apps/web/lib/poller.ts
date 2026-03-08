@@ -59,10 +59,21 @@ const fetchAllSourcesForArtist = async (artistId: string): Promise<NormalizedEve
     return [];
   }
 
-  const [ticketmasterEvents, eventbriteEvents] = await Promise.all([
+  const sourceResults = await Promise.allSettled([
     fetchTicketmasterEvents(artist),
     fetchEventbriteEvents(artist),
   ]);
+
+  const ticketmasterEvents = sourceResults[0].status === "fulfilled" ? sourceResults[0].value : [];
+  const eventbriteEvents = sourceResults[1].status === "fulfilled" ? sourceResults[1].value : [];
+
+  if (sourceResults[0].status === "rejected") {
+    console.error(`[poll] ticketmaster failed for ${artist.name}`, sourceResults[0].reason);
+  }
+
+  if (sourceResults[1].status === "rejected") {
+    console.error(`[poll] eventbrite failed for ${artist.name}`, sourceResults[1].reason);
+  }
 
   return [...ticketmasterEvents, ...eventbriteEvents];
 };
@@ -76,10 +87,21 @@ const fetchAllEvents = async (city?: string): Promise<NormalizedEvent[]> => {
       continue;
     }
 
-    const [ticketmasterEvents, eventbriteEvents] = await Promise.all([
+    const sourceResults = await Promise.allSettled([
       fetchTicketmasterEvents(artist),
       fetchEventbriteEvents(artist),
     ]);
+
+    const ticketmasterEvents = sourceResults[0].status === "fulfilled" ? sourceResults[0].value : [];
+    const eventbriteEvents = sourceResults[1].status === "fulfilled" ? sourceResults[1].value : [];
+
+    if (sourceResults[0].status === "rejected") {
+      console.error(`[poll] ticketmaster failed for ${artist.name}`, sourceResults[0].reason);
+    }
+
+    if (sourceResults[1].status === "rejected") {
+      console.error(`[poll] eventbrite failed for ${artist.name}`, sourceResults[1].reason);
+    }
 
     events.push(...ticketmasterEvents, ...eventbriteEvents);
   }
