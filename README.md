@@ -1,4 +1,4 @@
-# Concert-Track
+# concert-track
 
 Watch-and-alert MVP for concert presales.
 
