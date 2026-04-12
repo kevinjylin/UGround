@@ -1,61 +1,14 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { signOut } from "next-auth/react";
-import type { AlertRecord, EventRecord, PollResult, WatchArtist } from "../lib/types";
-
-interface HealthResponse {
-  databaseConfigured: boolean;
-  sourceKeysConfigured: {
-    ticketmaster: boolean;
-    eventbrite: boolean;
-    spotify: boolean;
-  };
-  authConfigured: {
-    credentials: boolean;
-    google: boolean;
-    secret: boolean;
-  };
-  alertChannelsConfigured: {
-    discord: boolean;
-    email: boolean;
-    sms: boolean;
-  };
-}
-
-const sourceLabel: Record<EventRecord["source_slug"], string> = {
-  ticketmaster: "Ticketmaster",
-  eventbrite: "Eventbrite",
-  manual: "Manual",
-};
-
-const shortDate = (value: string | null): string => {
-  if (!value) {
-    return "Unknown";
-  }
-
-  return new Date(value).toLocaleString();
-};
-
-const formatWatchLocation = (artist: WatchArtist): string => {
-  const city = artist.city?.trim() || "";
-  const state = artist.state?.trim() || "";
-  const country = artist.country?.trim() || "US";
-
-  if (city && state) {
-    return `${city}, ${state}, ${country}`;
-  }
-
-  if (city) {
-    return `${city}, ${country}`;
-  }
-
-  if (state) {
-    return `Any city in ${state}, ${country}`;
-  }
-
-  return `Any city, ${country}`;
-};
+import type { AlertRecord, EventRecord, HealthResponse, PollResult, WatchArtist } from "../lib/types";
+import ErrorBanner from "./components/ErrorBanner";
+import StatCard from "./components/StatCard";
+import WatchlistPanel from "./components/WatchlistPanel";
+import EventList from "./components/EventList";
+import AlertList from "./components/AlertList";
+import IntegrationsPanel from "./components/IntegrationsPanel";
 
 export default function Home() {
   const [artists, setArtists] = useState<WatchArtist[]>([]);
@@ -63,14 +16,11 @@ export default function Home() {
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
 
-  const [artistName, setArtistName] = useState("");
   const [city, setCity] = useState("");
   const [stateRegion, setStateRegion] = useState("");
   const [country, setCountry] = useState("US");
-  const [spotifyIds, setSpotifyIds] = useState("");
-  const [pollSecret, setPollSecret] = useState("");
 
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
   const [polling, setPolling] = useState(false);
   const [lastPoll, setLastPoll] = useState<PollResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,24 +28,21 @@ export default function Home() {
   const refreshAll = async () => {
     setBusy(true);
     setError(null);
-
     try {
-      const [watchlistResponse, eventsResponse, alertsResponse, healthResponse] = await Promise.all([
+      const [watchlistRes, eventsRes, alertsRes, healthRes] = await Promise.all([
         fetch("/api/watchlist", { cache: "no-store" }),
         fetch("/api/events?limit=80", { cache: "no-store" }),
         fetch("/api/alerts?limit=60", { cache: "no-store" }),
         fetch("/api/health", { cache: "no-store" }),
       ]);
-
-      const watchlistJson = (await watchlistResponse.json()) as { artists?: WatchArtist[]; error?: string };
-      const eventsJson = (await eventsResponse.json()) as { events?: EventRecord[]; error?: string };
-      const alertsJson = (await alertsResponse.json()) as { alerts?: AlertRecord[]; error?: string };
-      const healthJson = (await healthResponse.json()) as HealthResponse;
+      const watchlistJson = (await watchlistRes.json()) as { artists?: WatchArtist[]; error?: string };
+      const eventsJson = (await eventsRes.json()) as { events?: EventRecord[]; error?: string };
+      const alertsJson = (await alertsRes.json()) as { alerts?: AlertRecord[]; error?: string };
+      const healthJson = (await healthRes.json()) as HealthResponse;
 
       if (watchlistJson.error || eventsJson.error || alertsJson.error) {
         throw new Error(watchlistJson.error ?? eventsJson.error ?? alertsJson.error);
       }
-
       setArtists(watchlistJson.artists ?? []);
       setEvents(eventsJson.events ?? []);
       setAlerts(alertsJson.alerts ?? []);
@@ -111,299 +58,102 @@ export default function Home() {
     void refreshAll();
   }, []);
 
-  const addArtist = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const addArtist = async (name: string) => {
     setError(null);
-
-    try {
-      const response = await fetch("/api/watchlist", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: artistName,
-          city: city || undefined,
-          state: stateRegion || undefined,
-          country: country || "US",
-        }),
-      });
-
-      const json = (await response.json()) as { error?: string };
-      if (!response.ok || json.error) {
-        throw new Error(json.error ?? "Failed to add artist");
-      }
-
-      setArtistName("");
-      await refreshAll();
-    } catch (caught) {
-      setError((caught as Error).message);
-    }
+    const res = await fetch("/api/watchlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, city: city || undefined, state: stateRegion || undefined, country: country || "US" }),
+    });
+    const json = (await res.json()) as { error?: string };
+    if (!res.ok || json.error) throw new Error(json.error ?? "Failed to add artist");
+    await refreshAll();
   };
 
-  const removeArtist = async (artistId: string) => {
+  const removeArtist = async (id: string) => {
     setError(null);
-
-    try {
-      const response = await fetch(`/api/watchlist/${artistId}`, {
-        method: "DELETE",
-      });
-
-      const json = (await response.json()) as { error?: string };
-      if (!response.ok || json.error) {
-        throw new Error(json.error ?? "Failed to remove artist");
-      }
-
-      await refreshAll();
-    } catch (caught) {
-      setError((caught as Error).message);
-    }
+    const res = await fetch(`/api/watchlist/${id}`, { method: "DELETE" });
+    const json = (await res.json()) as { error?: string };
+    if (!res.ok || json.error) throw new Error(json.error ?? "Failed to remove artist");
+    await refreshAll();
   };
 
-  const importFromSpotify = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const importFromSpotify = async (ids: string) => {
     setError(null);
-
-    try {
-      const response = await fetch("/api/watchlist/import-spotify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          artistIds: spotifyIds,
-          city: city || undefined,
-          state: stateRegion || undefined,
-          country: country || "US",
-        }),
-      });
-
-      const json = (await response.json()) as { error?: string };
-      if (!response.ok || json.error) {
-        throw new Error(json.error ?? "Spotify import failed");
-      }
-
-      setSpotifyIds("");
-      await refreshAll();
-    } catch (caught) {
-      setError((caught as Error).message);
-    }
+    const res = await fetch("/api/watchlist/import-spotify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ artistIds: ids, city: city || undefined, state: stateRegion || undefined, country: country || "US" }),
+    });
+    const json = (await res.json()) as { error?: string };
+    if (!res.ok || json.error) throw new Error(json.error ?? "Spotify import failed");
+    await refreshAll();
   };
 
-  const runPoll = async () => {
+  const runPoll = async (secret: string) => {
     setPolling(true);
     setError(null);
-
     try {
-      const response = await fetch("/api/poll", {
+      const res = await fetch("/api/poll", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(pollSecret ? { "x-poll-secret": pollSecret } : {}),
-        },
-        body: JSON.stringify({
-          city: city || undefined,
-        }),
+        headers: { "Content-Type": "application/json", ...(secret ? { "x-poll-secret": secret } : {}) },
+        body: JSON.stringify({ city: city || undefined }),
       });
-
-      const json = (await response.json()) as { result?: PollResult; error?: string };
-      if (!response.ok || json.error || !json.result) {
-        throw new Error(json.error ?? "Poll run failed");
-      }
-
+      const json = (await res.json()) as { result?: PollResult; error?: string };
+      if (!res.ok || json.error || !json.result) throw new Error(json.error ?? "Poll run failed");
       setLastPoll(json.result);
       await refreshAll();
-    } catch (caught) {
-      setError((caught as Error).message);
     } finally {
       setPolling(false);
     }
   };
 
-  const logout = async () => {
-    await signOut({ callbackUrl: "/login" });
-  };
-
   return (
-    <div className="pageShell">
+    <div className="pageShell" aria-busy={busy}>
       <header className="hero">
-        <p className="kicker">Concert Presale Watcher</p>
-        <h1>Watch artists and alert fast when listings change.</h1>
-        <p>
-          Focused MVP: follow artists, poll Ticketmaster/Eventbrite on a schedule, detect updates, then send
-          alerts through Discord, email, and SMS.
-        </p>
-        <button type="button" className="logoutButton" onClick={() => void logout()}>
-          Log Out
-        </button>
+        <div className="heroTop">
+          <span className="wordmark">UGround</span>
+          <button type="button" className="btn--secondary btn--small" onClick={() => void signOut({ callbackUrl: "/login" })}>
+            Log Out
+          </button>
+        </div>
+        <h1>get there first.</h1>
+        <p>Follow artists. Get alerts the moment presales drop.</p>
       </header>
 
-      {error ? <p className="errorBanner">{error}</p> : null}
+      {error ? <ErrorBanner message={error} /> : null}
 
       <section className="grid statsRow">
-        <article className="panel statPanel">
-          <span>Followed Artists</span>
-          <strong>{artists.length}</strong>
-        </article>
-        <article className="panel statPanel">
-          <span>Tracked Events</span>
-          <strong>{events.length}</strong>
-        </article>
-        <article className="panel statPanel">
-          <span>Recent Alerts</span>
-          <strong>{alerts.length}</strong>
-        </article>
+        <StatCard label="Followed Artists" value={artists.length} loading={busy} accent="var(--accent)" />
+        <StatCard label="Tracked Events" value={events.length} loading={busy} accent="var(--accent-2)" />
+        <StatCard label="Recent Alerts" value={alerts.length} loading={busy} accent="var(--warning)" />
       </section>
 
       <section className="grid twoCol">
-        <article className="panel">
-          <h2>Follow Artist</h2>
-          <form className="stack" onSubmit={addArtist}>
-            <input
-              value={artistName}
-              onChange={(event) => setArtistName(event.target.value)}
-              placeholder="Artist name"
-              required
-            />
-            <div className="inlineInputs">
-              <input
-                value={city}
-                onChange={(event) => setCity(event.target.value)}
-                placeholder="City (optional)"
-              />
-              <input
-                value={stateRegion}
-                onChange={(event) => setStateRegion(event.target.value)}
-                placeholder="State"
-              />
-              <input
-                value={country}
-                onChange={(event) => setCountry(event.target.value)}
-                placeholder="Country"
-              />
-            </div>
-            <button type="submit" disabled={busy}>
-              Add to Watchlist
-            </button>
-          </form>
-
-          <h3>Spotify ID Import</h3>
-          <form className="stack" onSubmit={importFromSpotify}>
-            <textarea
-              value={spotifyIds}
-              onChange={(event) => setSpotifyIds(event.target.value)}
-              placeholder="Paste Spotify artist IDs (comma or newline separated)"
-              rows={4}
-            />
-            <button type="submit" disabled={busy}>
-              Import from Spotify
-            </button>
-          </form>
-
-          <div className="pollBox">
-            <input
-              value={pollSecret}
-              onChange={(event) => setPollSecret(event.target.value)}
-              placeholder="Poll secret (only if configured)"
-            />
-            <button type="button" onClick={runPoll} disabled={polling}>
-              {polling ? "Polling..." : "Run Poll Now"}
-            </button>
-          </div>
-
-          {lastPoll ? (
-            <p className="muted">
-              Last poll: {lastPoll.dedupedEvents} deduped events, {lastPoll.alertsCreated} alerts, ended at{" "}
-              {shortDate(lastPoll.endedAt)}.
-            </p>
-          ) : null}
-        </article>
-
-        <article className="panel">
-          <h2>Watchlist</h2>
-          <ul className="list">
-            {artists.map((artist) => (
-              <li key={artist.id} className="listItem">
-                <div>
-                  <strong>{artist.name}</strong>
-                  <p>
-                    {formatWatchLocation(artist)}
-                    {artist.spotify_id ? ` · Spotify: ${artist.spotify_id}` : ""}
-                  </p>
-                </div>
-                <button type="button" className="dangerButton" onClick={() => void removeArtist(artist.id)}>
-                  Remove
-                </button>
-              </li>
-            ))}
-            {artists.length === 0 ? <li className="emptyState">No followed artists yet.</li> : null}
-          </ul>
-        </article>
+        <WatchlistPanel
+          artists={artists}
+          busy={busy}
+          city={city}
+          stateRegion={stateRegion}
+          country={country}
+          onCityChange={setCity}
+          onStateChange={setStateRegion}
+          onCountryChange={setCountry}
+          onAdd={addArtist}
+          onImportSpotify={importFromSpotify}
+          onRemove={removeArtist}
+          onPoll={runPoll}
+          polling={polling}
+          lastPoll={lastPoll}
+        />
       </section>
 
       <section className="grid twoCol">
-        <article className="panel">
-          <h2>Events</h2>
-          <ul className="list">
-            {events.map((event) => (
-              <li key={event.id} className="listItem">
-                <div>
-                  <strong>{event.artist_name}</strong>
-                  <p>
-                    {event.title} · {event.venue ?? "Unknown venue"}
-                  </p>
-                  <p>
-                    {event.city ?? "Unknown city"} · {shortDate(event.start_time)} · {sourceLabel[event.source_slug]} ·
-                    {" "}
-                    {event.status}
-                  </p>
-                </div>
-                <a href={event.ticket_url ?? "#"} target="_blank" rel="noreferrer">
-                  Ticket
-                </a>
-              </li>
-            ))}
-            {events.length === 0 ? <li className="emptyState">No events tracked yet.</li> : null}
-          </ul>
-        </article>
-
-        <article className="panel">
-          <h2>Alerts</h2>
-          <ul className="list">
-            {alerts.map((alert) => (
-              <li key={alert.id} className="listItem">
-                <div>
-                  <strong>{alert.alert_type}</strong>
-                  <p>{alert.message}</p>
-                  <p>{shortDate(alert.created_at)}</p>
-                </div>
-                <span className="pill">{alert.sent_channels.join(", ") || "stored"}</span>
-              </li>
-            ))}
-            {alerts.length === 0 ? <li className="emptyState">No alerts fired yet.</li> : null}
-          </ul>
-        </article>
+        <EventList events={events} loading={busy} />
+        <AlertList alerts={alerts} loading={busy} />
       </section>
 
-      <section className="panel healthPanel">
-        <h2>Integrations</h2>
-        {health ? (
-          <div className="healthGrid">
-            <p>DB: {health.databaseConfigured ? "ready" : "missing config"}</p>
-            <p>Ticketmaster key: {health.sourceKeysConfigured.ticketmaster ? "yes" : "no"}</p>
-            <p>Eventbrite key: {health.sourceKeysConfigured.eventbrite ? "yes" : "no"}</p>
-            <p>Spotify keypair: {health.sourceKeysConfigured.spotify ? "yes" : "no"}</p>
-            <p>Credentials login: {health.authConfigured.credentials ? "yes" : "no"}</p>
-            <p>Google login: {health.authConfigured.google ? "yes" : "no"}</p>
-            <p>Auth secret: {health.authConfigured.secret ? "yes" : "no"}</p>
-            <p>Discord alerts: {health.alertChannelsConfigured.discord ? "yes" : "no"}</p>
-            <p>Email alerts: {health.alertChannelsConfigured.email ? "yes" : "no"}</p>
-            <p>SMS alerts: {health.alertChannelsConfigured.sms ? "yes" : "no"}</p>
-          </div>
-        ) : (
-          <p className="muted">Loading integration status...</p>
-        )}
-      </section>
+      <IntegrationsPanel health={health} />
     </div>
   );
 }

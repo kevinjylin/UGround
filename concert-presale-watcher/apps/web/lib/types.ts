@@ -98,3 +98,22 @@ export interface PollResult {
 export interface PollRequestBody {
   city?: string;
 }
+
+export interface HealthResponse {
+  databaseConfigured: boolean;
+  sourceKeysConfigured: {
+    ticketmaster: boolean;
+    eventbrite: boolean;
+    spotify: boolean;
+  };
+  authConfigured: {
+    credentials: boolean;
+    google: boolean;
+    secret: boolean;
+  };
+  alertChannelsConfigured: {
+    discord: boolean;
+    email: boolean;
+    sms: boolean;
+  };
+}
