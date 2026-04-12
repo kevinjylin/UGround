@@ -1,159 +1,95 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { signOut } from "next-auth/react";
-import type { AlertRecord, EventRecord, HealthResponse, PollResult, WatchArtist } from "../lib/types";
-import ErrorBanner from "./components/ErrorBanner";
-import StatCard from "./components/StatCard";
-import WatchlistPanel from "./components/WatchlistPanel";
-import EventList from "./components/EventList";
-import AlertList from "./components/AlertList";
-import IntegrationsPanel from "./components/IntegrationsPanel";
+import Link from "next/link";
+import Image from "next/image";
+import { useEffect, useRef } from "react";
 
-export default function Home() {
-  const [artists, setArtists] = useState<WatchArtist[]>([]);
-  const [events, setEvents] = useState<EventRecord[]>([]);
-  const [alerts, setAlerts] = useState<AlertRecord[]>([]);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-
-  const [city, setCity] = useState("");
-  const [stateRegion, setStateRegion] = useState("");
-  const [country, setCountry] = useState("US");
-
-  const [busy, setBusy] = useState(true);
-  const [polling, setPolling] = useState(false);
-  const [lastPoll, setLastPoll] = useState<PollResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const refreshAll = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const [watchlistRes, eventsRes, alertsRes, healthRes] = await Promise.all([
-        fetch("/api/watchlist", { cache: "no-store" }),
-        fetch("/api/events?limit=80", { cache: "no-store" }),
-        fetch("/api/alerts?limit=60", { cache: "no-store" }),
-        fetch("/api/health", { cache: "no-store" }),
-      ]);
-      const watchlistJson = (await watchlistRes.json()) as { artists?: WatchArtist[]; error?: string };
-      const eventsJson = (await eventsRes.json()) as { events?: EventRecord[]; error?: string };
-      const alertsJson = (await alertsRes.json()) as { alerts?: AlertRecord[]; error?: string };
-      const healthJson = (await healthRes.json()) as HealthResponse;
-
-      if (watchlistJson.error || eventsJson.error || alertsJson.error) {
-        throw new Error(watchlistJson.error ?? eventsJson.error ?? alertsJson.error);
-      }
-      setArtists(watchlistJson.artists ?? []);
-      setEvents(eventsJson.events ?? []);
-      setAlerts(alertsJson.alerts ?? []);
-      setHealth(healthJson);
-    } catch (caught) {
-      setError((caught as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+export default function LandingPage() {
+  const proofRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    void refreshAll();
+    const section = proofRef.current;
+    if (!section) return;
+
+    const cards = section.querySelectorAll("article");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("revealed");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15 },
+    );
+    cards.forEach((card) => observer.observe(card));
+    return () => observer.disconnect();
   }, []);
 
-  const addArtist = async (name: string) => {
-    setError(null);
-    const res = await fetch("/api/watchlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, city: city || undefined, state: stateRegion || undefined, country: country || "US" }),
-    });
-    const json = (await res.json()) as { error?: string };
-    if (!res.ok || json.error) throw new Error(json.error ?? "Failed to add artist");
-    await refreshAll();
-  };
-
-  const removeArtist = async (id: string) => {
-    setError(null);
-    const res = await fetch(`/api/watchlist/${id}`, { method: "DELETE" });
-    const json = (await res.json()) as { error?: string };
-    if (!res.ok || json.error) throw new Error(json.error ?? "Failed to remove artist");
-    await refreshAll();
-  };
-
-  const importFromSpotify = async (ids: string) => {
-    setError(null);
-    const res = await fetch("/api/watchlist/import-spotify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artistIds: ids, city: city || undefined, state: stateRegion || undefined, country: country || "US" }),
-    });
-    const json = (await res.json()) as { error?: string };
-    if (!res.ok || json.error) throw new Error(json.error ?? "Spotify import failed");
-    await refreshAll();
-  };
-
-  const runPoll = async (secret: string) => {
-    setPolling(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/poll", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(secret ? { "x-poll-secret": secret } : {}) },
-        body: JSON.stringify({ city: city || undefined }),
-      });
-      const json = (await res.json()) as { result?: PollResult; error?: string };
-      if (!res.ok || json.error || !json.result) throw new Error(json.error ?? "Poll run failed");
-      setLastPoll(json.result);
-      await refreshAll();
-    } finally {
-      setPolling(false);
-    }
-  };
-
   return (
-    <div className="pageShell" aria-busy={busy}>
-      <header className="hero">
-        <div className="heroTop">
-          <span className="wordmark">UGround</span>
-          <button type="button" className="btn--secondary btn--small" onClick={() => void signOut({ callbackUrl: "/login" })}>
-            Log Out
-          </button>
+    <main className="landingShell">
+      <nav className="landingNav anim-slideDown" aria-label="Primary navigation">
+        <Link href="/" className="landingWordmark" aria-label="UGround home">
+          UGround
+        </Link>
+        <div className="landingNavLinks">
+          <Link href="/login">Sign in</Link>
+          <Link href="/signup" className="landingNavCta">
+            Create account
+          </Link>
         </div>
-        <h1>get there first.</h1>
-        <p>Follow artists. Get alerts the moment presales drop.</p>
-      </header>
+      </nav>
 
-      {error ? <ErrorBanner message={error} /> : null}
+      <section className="landingHero">
+        <div className="landingCopy">
+          <p className="landingKicker anim-fadeUp" style={{ animationDelay: "0.15s" }}>
+            Watchlist-powered concert alerts
+          </p>
+          <h1 className="anim-fadeUp" style={{ animationDelay: "0.3s" }}>
+            Catch small-room tickets before the feed wakes up.
+          </h1>
+          <p className="landingLead anim-fadeUp" style={{ animationDelay: "0.45s" }}>
+            Follow the artists, venues, and cities you care about. UGround checks public ticket sources and pings you when fresh dates or sale changes show up.
+          </p>
+          <div className="landingActions anim-fadeUp" style={{ animationDelay: "0.6s" }}>
+            <Link href="/signup" className="landingButton landingButtonPrimary">
+              Start watching
+            </Link>
+            <Link href="/login" className="landingButton landingButtonSecondary">
+              I already have an account
+            </Link>
+          </div>
+        </div>
 
-      <section className="grid statsRow">
-        <StatCard label="Followed Artists" value={artists.length} loading={busy} accent="var(--accent)" />
-        <StatCard label="Tracked Events" value={events.length} loading={busy} accent="var(--accent-2)" />
-        <StatCard label="Recent Alerts" value={alerts.length} loading={busy} accent="var(--warning)" />
+        <div className="landingMedia anim-fadeScale" aria-label="Concert crowd">
+          <Image
+            src="https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=1200&q=82"
+            alt="A packed concert crowd under red stage lights"
+            fill
+            priority
+            sizes="(max-width: 980px) 100vw, 46vw"
+          />
+        </div>
       </section>
 
-      <section className="grid twoCol">
-        <WatchlistPanel
-          artists={artists}
-          busy={busy}
-          city={city}
-          stateRegion={stateRegion}
-          country={country}
-          onCityChange={setCity}
-          onStateChange={setStateRegion}
-          onCountryChange={setCountry}
-          onAdd={addArtist}
-          onImportSpotify={importFromSpotify}
-          onRemove={removeArtist}
-          onPoll={runPoll}
-          polling={polling}
-          lastPoll={lastPoll}
-        />
+      <section className="landingProof" ref={proofRef} aria-label="How UGround works">
+        <article className="proofCard" style={{ transitionDelay: "0s" }}>
+          <span>01</span>
+          <h2>Follow your lane</h2>
+          <p>Track the artists and scenes you actually care about instead of scanning every venue calendar by hand.</p>
+        </article>
+        <article className="proofCard" style={{ transitionDelay: "0.12s" }}>
+          <span>02</span>
+          <h2>Watch for changes</h2>
+          <p>Ticketmaster, Eventbrite, and curated sources are checked for new listings, status flips, and earlier sale times.</p>
+        </article>
+        <article className="proofCard" style={{ transitionDelay: "0.24s" }}>
+          <span>03</span>
+          <h2>Move first</h2>
+          <p>Email, Discord, and SMS hooks give you a fast heads-up when something worth acting on appears.</p>
+        </article>
       </section>
-
-      <section className="grid twoCol">
-        <EventList events={events} loading={busy} />
-        <AlertList alerts={alerts} loading={busy} />
-      </section>
-
-      <IntegrationsPanel health={health} />
-    </div>
+    </main>
   );
 }

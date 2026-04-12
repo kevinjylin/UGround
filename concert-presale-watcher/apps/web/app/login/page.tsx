@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import ErrorBanner from "../components/ErrorBanner";
@@ -24,14 +25,14 @@ export default function LoginPage() {
         username,
         password,
         redirect: false,
-        callbackUrl: nextPath && nextPath.startsWith("/") ? nextPath : "/",
+        callbackUrl: nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard",
       });
 
       if (result?.error) {
         throw new Error("Invalid username or password");
       }
 
-      router.replace(result?.url ?? "/");
+      router.replace(result?.url ?? "/dashboard");
       router.refresh();
     } catch (caught) {
       setError((caught as Error).message);
@@ -46,7 +47,7 @@ export default function LoginPage() {
     const nextPath = new URLSearchParams(window.location.search).get("next");
 
     await signIn("google", {
-      callbackUrl: nextPath && nextPath.startsWith("/") ? nextPath : "/",
+      callbackUrl: nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard",
     });
   };
 
@@ -84,6 +85,9 @@ export default function LoginPage() {
           {googleBusy ? "Redirecting..." : "Continue with Google"}
         </button>
         {error ? <ErrorBanner message={error} /> : null}
+        <p className="authFootnote">
+          New here? <Link href="/signup">Create an account</Link>
+        </p>
       </section>
     </main>
   );

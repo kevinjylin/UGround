@@ -2,6 +2,8 @@ import NextAuth, { type NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { env } from "../../../../lib/env";
+import { verifyPassword } from "../../../../lib/password";
+import { getAuthUserByUsername } from "../../../../lib/supabase";
 
 const providers: NextAuthOptions["providers"] = [
   CredentialsProvider({
@@ -11,14 +13,27 @@ const providers: NextAuthOptions["providers"] = [
       password: { label: "Password", type: "password" },
     },
     async authorize(credentials) {
-      if (!env.authUsername || !env.authPassword) {
+      const username = typeof credentials?.username === "string" ? credentials.username.trim().toLowerCase() : "";
+      const password = typeof credentials?.password === "string" ? credentials.password : "";
+
+      if (!username || !password) {
         return null;
       }
 
-      const username = typeof credentials?.username === "string" ? credentials.username : "";
-      const password = typeof credentials?.password === "string" ? credentials.password : "";
+      try {
+        const user = await getAuthUserByUsername(username);
 
-      if (username === env.authUsername && password === env.authPassword) {
+        if (user && (await verifyPassword(password, user.password_salt, user.password_hash))) {
+          return {
+            id: user.id,
+            name: user.username,
+          };
+        }
+      } catch {
+        // Keep the env-based login usable if the auth_users table is temporarily unavailable.
+      }
+
+      if (env.authUsername && env.authPassword && username === env.authUsername.toLowerCase() && password === env.authPassword) {
         return {
           id: username,
           name: username,

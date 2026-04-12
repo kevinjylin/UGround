@@ -25,6 +25,20 @@ interface CreateAlertInput {
   sentAt: string | null;
 }
 
+export interface AuthUserRecord {
+  id: string;
+  username: string;
+  password_hash: string;
+  password_salt: string;
+  created_at: string;
+}
+
+interface CreateAuthUserInput {
+  username: string;
+  passwordHash: string;
+  passwordSalt: string;
+}
+
 const getBaseUrl = (): string => {
   assertSupabaseConfig();
   return `${env.supabaseUrl}/rest/v1`;
@@ -126,6 +140,43 @@ export const deleteWatchArtist = async (id: string): Promise<void> => {
       Prefer: "return=minimal",
     },
   });
+};
+
+export const getAuthUserByUsername = async (username: string): Promise<AuthUserRecord | null> => {
+  if (!env.supabaseUrl || !env.supabaseServiceKey) {
+    return null;
+  }
+
+  const encodedUsername = encodeURIComponent(username);
+  const users = await supabaseRequest<AuthUserRecord[]>(
+    `/auth_users?select=*&username=eq.${encodedUsername}&limit=1`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  return users[0] ?? null;
+};
+
+export const createAuthUser = async (input: CreateAuthUserInput): Promise<AuthUserRecord> => {
+  return supabaseRequest<AuthUserRecord>(
+    "/auth_users?select=*",
+    {
+      method: "POST",
+      headers: {
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        username: input.username,
+        password_hash: input.passwordHash,
+        password_salt: input.passwordSalt,
+      }),
+    },
+    true,
+  );
 };
 
 export const listEvents = async (limit = 100): Promise<EventRecord[]> => {

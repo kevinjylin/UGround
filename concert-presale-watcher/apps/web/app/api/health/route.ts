@@ -13,7 +13,7 @@ export async function GET() {
       spotify: Boolean(env.spotifyClientId && env.spotifyClientSecret),
     },
     authConfigured: {
-      credentials: Boolean(env.authUsername && env.authPassword),
+      credentials: hasSupabaseConfig() || Boolean(env.authUsername && env.authPassword),
       google: Boolean(env.googleClientId && env.googleClientSecret),
       secret: Boolean(env.authSecret),
     },

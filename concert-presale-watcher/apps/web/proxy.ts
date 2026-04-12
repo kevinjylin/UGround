@@ -4,9 +4,12 @@ import { getToken } from "next-auth/jwt";
 import { env } from "./lib/env";
 
 const isAuthEnabled = Boolean(
+  (env.supabaseUrl && env.supabaseServiceKey) ||
   (env.authUsername && env.authPassword) ||
     (env.googleClientId && env.googleClientSecret),
 );
+
+const publicPaths = new Set(["/", "/login", "/signup", "/api/health", "/api/signup"]);
 
 const isStaticAsset = (pathname: string): boolean => {
   return (
@@ -28,7 +31,18 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  if (isStaticAsset(pathname) || pathname.startsWith("/api/auth") || pathname === "/api/health") {
+  if (isStaticAsset(pathname) || pathname.startsWith("/api/auth") || publicPaths.has(pathname)) {
+    if ((pathname === "/login" || pathname === "/signup") && isAuthEnabled) {
+      const token = await getToken({
+        req: request,
+        secret: env.authSecret,
+      });
+
+      if (token) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+    }
+
     return NextResponse.next();
   }
 
@@ -48,14 +62,6 @@ export async function proxy(request: NextRequest) {
 
   const isAuthenticated = Boolean(token);
 
-  if (pathname === "/login") {
-    if (isAuthenticated) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
-
-    return NextResponse.next();
-  }
-
   if (isAuthenticated) {
     return NextResponse.next();
   }
@@ -65,7 +71,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("next", pathname);
+  loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
   return NextResponse.redirect(loginUrl);
 }
 
