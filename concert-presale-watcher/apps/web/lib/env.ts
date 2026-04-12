@@ -16,6 +16,7 @@ export const env = {
   spotifyClientSecret: readEnv("SPOTIFY_CLIENT_SECRET"),
   defaultCity: readEnv("DEFAULT_CITY"),
   pollSecret: readEnv("POLL_SECRET"),
+  cronSecret: readEnv("CRON_SECRET"),
   discordWebhookUrl: readEnv("DISCORD_WEBHOOK_URL"),
   resendApiKey: readEnv("RESEND_API_KEY"),
   alertFromEmail: readEnv("ALERT_FROM_EMAIL"),

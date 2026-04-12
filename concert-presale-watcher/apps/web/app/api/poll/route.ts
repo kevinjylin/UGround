@@ -1,26 +1,14 @@
 import { NextResponse } from "next/server";
-import { env } from "../../../lib/env";
+import { getCurrentUserId } from "../../../lib/auth";
+import { isPollRequestAuthorized } from "../../../lib/pollAuth";
 import { runPollCycle } from "../../../lib/poller";
 import type { PollRequestBody } from "../../../lib/types";
 
 export const runtime = "nodejs";
 
-const isAuthorized = (request: Request): boolean => {
-  if (!env.pollSecret) {
-    return true;
-  }
-
-  const header = request.headers.get("x-poll-secret") ?? request.headers.get("authorization");
-  if (!header) {
-    return false;
-  }
-
-  return header === env.pollSecret || header === `Bearer ${env.pollSecret}`;
-};
-
 export async function POST(request: Request) {
   try {
-    if (!isAuthorized(request)) {
+    if (!isPollRequestAuthorized(request)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -31,7 +19,8 @@ export async function POST(request: Request) {
       body = {};
     }
 
-    const result = await runPollCycle(body.city);
+    const userId = await getCurrentUserId();
+    const result = await runPollCycle(body.city, userId ?? undefined);
     return NextResponse.json({ result });
   } catch (error) {
     return NextResponse.json(

@@ -59,6 +59,7 @@ const normalizeEvents = (artist: WatchArtist, events: TicketmasterEvent[]): Norm
       const startTime = asIsoOrNull(event.dates?.start?.dateTime ?? event.dates?.start?.localDate ?? null);
 
       return {
+        user_id: artist.user_id,
         source_slug: "ticketmaster",
         source_event_id: event.id as string,
         watch_artist_id: artist.id,

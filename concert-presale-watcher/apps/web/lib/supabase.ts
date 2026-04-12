@@ -9,6 +9,7 @@ import type {
 } from "./types";
 
 interface CreateWatchArtistInput {
+  userId: string;
   name: string;
   spotifyId?: string;
   city?: string;
@@ -17,6 +18,7 @@ interface CreateWatchArtistInput {
 }
 
 interface CreateAlertInput {
+  userId: string;
   eventId: string;
   alertType: AlertType;
   message: string;
@@ -95,13 +97,15 @@ const supabaseRequest = async <T>(
   return JSON.parse(text) as T;
 };
 
-export const listWatchArtists = async (): Promise<WatchArtist[]> => {
+export const listWatchArtists = async (userId?: string): Promise<WatchArtist[]> => {
   if (!env.supabaseUrl || !env.supabaseServiceKey) {
     return [];
   }
 
+  const userFilter = userId ? `&user_id=eq.${encodeURIComponent(userId)}` : "";
+
   return supabaseRequest<WatchArtist[]>(
-    "/watch_artists?select=*&order=created_at.desc",
+    `/watch_artists?select=*&order=created_at.desc${userFilter}`,
     {
       method: "GET",
       headers: {
@@ -113,6 +117,7 @@ export const listWatchArtists = async (): Promise<WatchArtist[]> => {
 
 export const createWatchArtist = async (input: CreateWatchArtistInput): Promise<WatchArtist> => {
   const payload = {
+    user_id: input.userId,
     name: input.name,
     spotify_id: input.spotifyId ?? null,
     city: input.city ?? "",
@@ -121,7 +126,7 @@ export const createWatchArtist = async (input: CreateWatchArtistInput): Promise<
   };
 
   return supabaseRequest<WatchArtist>(
-    "/watch_artists?select=*&on_conflict=name,city,country",
+    "/watch_artists?select=*&on_conflict=user_id,name,city,country",
     {
       method: "POST",
       headers: {
@@ -133,8 +138,8 @@ export const createWatchArtist = async (input: CreateWatchArtistInput): Promise<
   );
 };
 
-export const deleteWatchArtist = async (id: string): Promise<void> => {
-  await supabaseRequest<void>(`/watch_artists?id=eq.${id}`, {
+export const deleteWatchArtist = async (id: string, userId: string): Promise<void> => {
+  await supabaseRequest<void>(`/watch_artists?id=eq.${id}&user_id=eq.${encodeURIComponent(userId)}`, {
     method: "DELETE",
     headers: {
       Prefer: "return=minimal",
@@ -179,13 +184,15 @@ export const createAuthUser = async (input: CreateAuthUserInput): Promise<AuthUs
   );
 };
 
-export const listEvents = async (limit = 100): Promise<EventRecord[]> => {
+export const listEvents = async (limit = 100, userId?: string): Promise<EventRecord[]> => {
   if (!env.supabaseUrl || !env.supabaseServiceKey) {
     return [];
   }
 
+  const userFilter = userId ? `&user_id=eq.${encodeURIComponent(userId)}` : "";
+
   return supabaseRequest<EventRecord[]>(
-    `/events?select=*&order=updated_at.desc&limit=${limit}`,
+    `/events?select=*&order=updated_at.desc&limit=${limit}${userFilter}`,
     {
       method: "GET",
       headers: {
@@ -198,12 +205,14 @@ export const listEvents = async (limit = 100): Promise<EventRecord[]> => {
 export const getEventBySourceId = async (
   sourceSlug: string,
   sourceEventId: string,
+  userId: string,
 ): Promise<EventRecord | null> => {
   const encodedSource = encodeURIComponent(sourceSlug);
   const encodedId = encodeURIComponent(sourceEventId);
+  const encodedUserId = encodeURIComponent(userId);
 
   const records = await supabaseRequest<EventRecord[]>(
-    `/events?select=*&source_slug=eq.${encodedSource}&source_event_id=eq.${encodedId}&limit=1`,
+    `/events?select=*&user_id=eq.${encodedUserId}&source_slug=eq.${encodedSource}&source_event_id=eq.${encodedId}&limit=1`,
     {
       method: "GET",
       headers: {
@@ -217,6 +226,7 @@ export const getEventBySourceId = async (
 
 export const upsertEvent = async (normalized: NormalizedEvent): Promise<EventRecord> => {
   const payload = {
+    user_id: normalized.user_id,
     source_slug: normalized.source_slug,
     source_event_id: normalized.source_event_id,
     watch_artist_id: normalized.watch_artist_id,
@@ -235,7 +245,7 @@ export const upsertEvent = async (normalized: NormalizedEvent): Promise<EventRec
   };
 
   return supabaseRequest<EventRecord>(
-    "/events?select=*&on_conflict=source_slug,source_event_id",
+    "/events?select=*&on_conflict=user_id,source_slug,source_event_id",
     {
       method: "POST",
       headers: {
@@ -282,13 +292,15 @@ export const createSnapshot = async (
   );
 };
 
-export const listAlerts = async (limit = 50): Promise<AlertRecord[]> => {
+export const listAlerts = async (limit = 50, userId?: string): Promise<AlertRecord[]> => {
   if (!env.supabaseUrl || !env.supabaseServiceKey) {
     return [];
   }
 
+  const userFilter = userId ? `&user_id=eq.${encodeURIComponent(userId)}` : "";
+
   return supabaseRequest<AlertRecord[]>(
-    `/alerts?select=*&order=created_at.desc&limit=${limit}`,
+    `/alerts?select=*&order=created_at.desc&limit=${limit}${userFilter}`,
     {
       method: "GET",
       headers: {
@@ -305,6 +317,7 @@ export const createAlert = async (input: CreateAlertInput): Promise<AlertRecord>
       method: "POST",
       body: JSON.stringify({
         event_id: input.eventId,
+        user_id: input.userId,
         alert_type: input.alertType,
         message: input.message,
         payload: input.payload ?? {},

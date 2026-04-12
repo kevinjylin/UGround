@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCurrentUserId } from "../../../lib/auth";
 import { normalizeState } from "../../../lib/state";
 import { createWatchArtist, listWatchArtists } from "../../../lib/supabase";
 
@@ -14,7 +15,12 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const artists = await listWatchArtists();
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const artists = await listWatchArtists(userId);
     return NextResponse.json({ artists });
   } catch (error) {
     return NextResponse.json(
@@ -28,6 +34,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await request.json()) as CreateWatchArtistRequest;
 
     if (!body.name || body.name.trim().length < 2) {
@@ -43,6 +54,7 @@ export async function POST(request: Request) {
     const normalizedCountry = body.country?.trim().toUpperCase() || "US";
 
     const artist = await createWatchArtist({
+      userId,
       name: body.name.trim(),
       spotifyId: body.spotifyId?.trim() || undefined,
       city: body.city?.trim() || undefined,

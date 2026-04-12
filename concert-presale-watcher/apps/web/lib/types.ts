@@ -17,6 +17,7 @@ export type AlertType =
 
 export interface WatchArtist {
   id: string;
+  user_id: string;
   name: string;
   spotify_id: string | null;
   city: string | null;
@@ -28,6 +29,7 @@ export interface WatchArtist {
 
 export interface EventRecord {
   id: string;
+  user_id: string;
   source_slug: SourceSlug;
   source_event_id: string;
   watch_artist_id: string | null;
@@ -57,6 +59,7 @@ export interface SnapshotRecord {
 
 export interface AlertRecord {
   id: string;
+  user_id: string;
   event_id: string;
   alert_type: AlertType;
   message: string;
@@ -67,6 +70,7 @@ export interface AlertRecord {
 }
 
 export interface NormalizedEvent {
+  user_id: string;
   source_slug: SourceSlug;
   source_event_id: string;
   watch_artist_id: string;

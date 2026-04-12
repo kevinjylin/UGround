@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { env } from "./lib/env";
+import { isPollRequestAuthorized } from "./lib/pollAuth";
 
 const isAuthEnabled = Boolean(
   (env.supabaseUrl && env.supabaseServiceKey) ||
@@ -46,13 +47,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname === "/api/poll") {
-    const header = request.headers.get("x-poll-secret") ?? request.headers.get("authorization");
-    const expected = env.pollSecret;
-
-    if (expected && (header === expected || header === `Bearer ${expected}`)) {
-      return NextResponse.next();
-    }
+  if ((pathname === "/api/poll" || pathname === "/api/cron/poll") && isPollRequestAuthorized(request)) {
+    return NextResponse.next();
   }
 
   const token = await getToken({

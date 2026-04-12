@@ -40,6 +40,7 @@ Set whichever integrations you want:
 
 Optional poll protection:
 - Set `POLL_SECRET` in web and worker.
+- Set `CRON_SECRET` in Vercel if you use the built-in scheduled poll.
 
 Login gate (recommended for Vercel):
 - `AUTH_SECRET`: random secret for Auth.js session signing
@@ -78,6 +79,7 @@ Open `http://localhost:3000`.
 - `GET /api/events`
 - `GET /api/alerts`
 - `POST /api/poll`
+- `GET /api/cron/poll`
 - `GET /api/health`
 
 ## Deploy To Vercel
@@ -88,12 +90,14 @@ Open `http://localhost:3000`.
    - Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
    - Recommended auth: `AUTH_SECRET`, `NEXTAUTH_URL`, `AUTH_USERNAME`, `AUTH_PASSWORD`
    - Optional Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-   - Optional integrations: Ticketmaster/Eventbrite/Spotify/Discord/Resend/Twilio/POLL_SECRET
+   - Optional integrations: Ticketmaster/Eventbrite/Spotify/Discord/Resend/Twilio/POLL_SECRET/CRON_SECRET
 4. Deploy.
 
 Notes:
 - If auth vars are set, Auth.js protects the site and API with a `/login` page.
 - `/api/poll` still works for your worker/cron when it sends `x-poll-secret` matching `POLL_SECRET`.
+- Vercel runs `GET /api/cron/poll` once daily via `apps/web/vercel.json`. Set `CRON_SECRET` so Vercel sends the matching `Authorization: Bearer ...` header; it can be the same value as `POLL_SECRET`.
+- For more frequent checks, deploy `apps/worker` separately with `WORKER_POLL_URL=https://<your-vercel-domain>/api/poll`, `POLL_SECRET`, and `POLL_INTERVAL_MINUTES`.
 
 ## Notes
 

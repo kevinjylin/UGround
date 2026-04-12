@@ -72,6 +72,7 @@ export const fetchEventbriteEvents = async (artist: WatchArtist): Promise<Normal
       const startTime = asIsoOrNull(event.start?.utc ?? event.start?.local ?? null);
 
       return {
+        user_id: artist.user_id,
         source_slug: "eventbrite",
         source_event_id: event.id as string,
         watch_artist_id: artist.id,

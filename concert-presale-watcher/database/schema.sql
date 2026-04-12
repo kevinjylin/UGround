@@ -32,15 +32,24 @@ on conflict (slug) do nothing;
 
 create table if not exists watch_artists (
   id uuid primary key default gen_random_uuid(),
+  user_id text not null default 'legacy',
   name text not null,
   spotify_id text,
   city text not null default '',
   state text not null default '',
   country text not null default 'US',
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (name, city, country)
+  updated_at timestamptz not null default now()
 );
+
+alter table watch_artists
+add column if not exists user_id text not null default 'legacy';
+
+alter table watch_artists
+drop constraint if exists watch_artists_name_city_country_key;
+
+create unique index if not exists watch_artists_user_name_city_country_idx
+on watch_artists (user_id, name, city, country);
 
 drop trigger if exists watch_artists_set_updated_at on watch_artists;
 create trigger watch_artists_set_updated_at
@@ -58,6 +67,7 @@ create table if not exists auth_users (
 
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),
+  user_id text not null default 'legacy',
   source_slug text not null references sources(slug),
   source_event_id text not null,
   watch_artist_id uuid references watch_artists(id) on delete set null,
@@ -74,15 +84,26 @@ create table if not exists events (
   dedupe_key text not null,
   last_seen_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (source_slug, source_event_id)
+  updated_at timestamptz not null default now()
 );
+
+alter table events
+add column if not exists user_id text not null default 'legacy';
+
+alter table events
+drop constraint if exists events_source_slug_source_event_id_key;
+
+create unique index if not exists events_user_source_event_idx
+on events (user_id, source_slug, source_event_id);
 
 create index if not exists events_artist_start_idx
 on events (artist_name, start_time desc);
 
 create index if not exists events_dedupe_key_idx
 on events (dedupe_key);
+
+create index if not exists events_user_updated_idx
+on events (user_id, updated_at desc);
 
 drop trigger if exists events_set_updated_at on events;
 create trigger events_set_updated_at
@@ -103,6 +124,7 @@ on snapshots (event_id, checked_at desc);
 
 create table if not exists alerts (
   id uuid primary key default gen_random_uuid(),
+  user_id text not null default 'legacy',
   event_id uuid not null references events(id) on delete cascade,
   alert_type text not null check (
     alert_type in ('new_event', 'status_changed', 'ticket_url_changed', 'on_sale_moved_earlier')
@@ -114,5 +136,11 @@ create table if not exists alerts (
   created_at timestamptz not null default now()
 );
 
+alter table alerts
+add column if not exists user_id text not null default 'legacy';
+
 create index if not exists alerts_created_at_idx
 on alerts (created_at desc);
+
+create index if not exists alerts_user_created_at_idx
+on alerts (user_id, created_at desc);

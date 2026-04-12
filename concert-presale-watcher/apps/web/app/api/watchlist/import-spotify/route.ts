@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCurrentUserId } from "../../../../lib/auth";
 import { normalizeState } from "../../../../lib/state";
 import { getSpotifyArtistsByIds } from "../../../../lib/sources/spotify";
 import { createWatchArtist } from "../../../../lib/supabase";
@@ -29,6 +30,11 @@ const parseIds = (input: string[] | string | undefined): string[] => {
 
 export async function POST(request: Request) {
   try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await request.json()) as ImportSpotifyRequest;
     const artistIds = parseIds(body.artistIds);
 
@@ -49,6 +55,7 @@ export async function POST(request: Request) {
 
     for (const artist of spotifyArtists) {
       const saved = await createWatchArtist({
+        userId,
         name: artist.name,
         spotifyId: artist.id,
         city: body.city?.trim() || undefined,

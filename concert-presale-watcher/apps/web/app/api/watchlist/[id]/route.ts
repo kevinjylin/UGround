@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCurrentUserId } from "../../../../lib/auth";
 import { deleteWatchArtist } from "../../../../lib/supabase";
 
 export const runtime = "nodejs";
@@ -9,8 +10,13 @@ interface Params {
 
 export async function DELETE(_: Request, { params }: Params) {
   try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
-    await deleteWatchArtist(id);
+    await deleteWatchArtist(id, userId);
 
     return NextResponse.json({ ok: true });
   } catch (error) {

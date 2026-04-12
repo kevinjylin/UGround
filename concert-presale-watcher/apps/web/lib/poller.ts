@@ -51,8 +51,8 @@ const getAlertTypes = (previous: EventRecord | null, next: NormalizedEvent): Ale
   return alerts;
 };
 
-const fetchAllSourcesForArtist = async (artistId: string): Promise<NormalizedEvent[]> => {
-  const artists = await listWatchArtists();
+const fetchAllSourcesForArtist = async (artistId: string, userId?: string): Promise<NormalizedEvent[]> => {
+  const artists = await listWatchArtists(userId);
   const artist = artists.find((item) => item.id === artistId);
 
   if (!artist) {
@@ -78,8 +78,8 @@ const fetchAllSourcesForArtist = async (artistId: string): Promise<NormalizedEve
   return [...ticketmasterEvents, ...eventbriteEvents];
 };
 
-const fetchAllEvents = async (city?: string): Promise<NormalizedEvent[]> => {
-  const artists = await listWatchArtists();
+const fetchAllEvents = async (city?: string, userId?: string): Promise<NormalizedEvent[]> => {
+  const artists = await listWatchArtists(userId);
   const events: NormalizedEvent[] = [];
 
   for (const artist of artists) {
@@ -109,9 +109,9 @@ const fetchAllEvents = async (city?: string): Promise<NormalizedEvent[]> => {
   return events;
 };
 
-export const runPollCycle = async (city?: string): Promise<PollResult> => {
+export const runPollCycle = async (city?: string, userId?: string): Promise<PollResult> => {
   const startedAt = new Date().toISOString();
-  const artists = await listWatchArtists();
+  const artists = await listWatchArtists(userId);
 
   if (artists.length === 0) {
     return {
@@ -126,7 +126,7 @@ export const runPollCycle = async (city?: string): Promise<PollResult> => {
     };
   }
 
-  const fetchedEvents = await fetchAllEvents(city ?? env.defaultCity);
+  const fetchedEvents = await fetchAllEvents(city ?? env.defaultCity, userId);
   const deduped = dedupeEvents(fetchedEvents);
 
   let newEvents = 0;
@@ -134,7 +134,7 @@ export const runPollCycle = async (city?: string): Promise<PollResult> => {
   let alertsCreated = 0;
 
   for (const normalized of deduped) {
-    const existing = await getEventBySourceId(normalized.source_slug, normalized.source_event_id);
+    const existing = await getEventBySourceId(normalized.source_slug, normalized.source_event_id, normalized.user_id);
     const alertTypes = getAlertTypes(existing, normalized);
 
     const savedEvent = await upsertEvent(normalized);
@@ -156,6 +156,7 @@ export const runPollCycle = async (city?: string): Promise<PollResult> => {
       const delivery = await deliverAlert(alertType, savedEvent);
 
       await createAlert({
+        userId: savedEvent.user_id,
         eventId: savedEvent.id,
         alertType,
         message,
@@ -184,14 +185,14 @@ export const runPollCycle = async (city?: string): Promise<PollResult> => {
   };
 };
 
-export const runPollForArtist = async (artistId: string): Promise<PollResult> => {
+export const runPollForArtist = async (artistId: string, userId?: string): Promise<PollResult> => {
   const startedAt = new Date().toISOString();
-  const events = dedupeEvents(await fetchAllSourcesForArtist(artistId));
+  const events = dedupeEvents(await fetchAllSourcesForArtist(artistId, userId));
 
   let alertsCreated = 0;
 
   for (const normalized of events) {
-    const existing = await getEventBySourceId(normalized.source_slug, normalized.source_event_id);
+    const existing = await getEventBySourceId(normalized.source_slug, normalized.source_event_id, normalized.user_id);
     const alertTypes = getAlertTypes(existing, normalized);
 
     const savedEvent = await upsertEvent(normalized);
@@ -207,6 +208,7 @@ export const runPollForArtist = async (artistId: string): Promise<PollResult> =>
       const delivery = await deliverAlert(alertType, savedEvent);
 
       await createAlert({
+        userId: savedEvent.user_id,
         eventId: savedEvent.id,
         alertType,
         message,

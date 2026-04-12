@@ -78,10 +78,11 @@ export const dedupeEvents = (events: NormalizedEvent[]): NormalizedEvent[] => {
   const map = new Map<string, NormalizedEvent>();
 
   for (const event of events) {
-    const existing = map.get(event.dedupe_key);
+    const scopedDedupeKey = `${event.user_id}::${event.dedupe_key}`;
+    const existing = map.get(scopedDedupeKey);
 
     if (!existing) {
-      map.set(event.dedupe_key, event);
+      map.set(scopedDedupeKey, event);
       continue;
     }
 
@@ -89,7 +90,7 @@ export const dedupeEvents = (events: NormalizedEvent[]): NormalizedEvent[] => {
     const existingPriority = SOURCE_PRIORITY[existing.source_slug];
 
     if (nextPriority > existingPriority) {
-      map.set(event.dedupe_key, event);
+      map.set(scopedDedupeKey, event);
     }
   }
 
