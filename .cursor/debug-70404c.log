@@ -1,3 +1,0 @@
-{"sessionId":"70404c","runId":"eaddrinuse-2026-04-12","hypothesisId":"H1","location":"lsof:3000","message":"listener while EADDRINUSE","data":{"pid":77914,"command":"node","port":3000},"timestamp":1775968900000}
-{"sessionId":"70404c","runId":"eaddrinuse-2026-04-12","hypothesisId":"H2","location":"apps/web/package.json","message":"dev script used hardcoded --port 3000 in worktree","data":{"fixed":true,"devScript":"next dev"},"timestamp":1775968900001}
-{"sessionId":"70404c","runId":"post-fix","hypothesisId":"H2","location":"apps/web","message":"PORT=3002 next dev starts","data":{"localUrl":"http://localhost:3002"},"timestamp":1775968910000}

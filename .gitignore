@@ -1,0 +1,3 @@
+# Editor / agent local dirs (repo root — nested package .gitignore does not apply here)
+.cursor/
+.claude/
