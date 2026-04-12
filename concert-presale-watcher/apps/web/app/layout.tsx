@@ -13,8 +13,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Concert Presale Watcher",
-  description: "Follow artists, poll event sources, and get alerts when listings change.",
+  title: "UGround",
+  description: "presale alerts for artists you follow",
 };
 
 export default function RootLayout({

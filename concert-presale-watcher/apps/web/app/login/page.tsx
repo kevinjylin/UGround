@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import ErrorBanner from "../components/ErrorBanner";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,11 +53,13 @@ export default function LoginPage() {
   return (
     <main className="loginShell">
       <section className="loginPanel">
-        <p className="kicker">Concert Presale Watcher</p>
+        <span className="wordmark">UGround</span>
         <h1>Sign In</h1>
-        <p className="muted">Use username/password or continue with Google.</p>
+        <p className="helpText">Use username/password or continue with Google.</p>
         <form className="stack" onSubmit={submit}>
+          <label htmlFor="login-username" className="srOnly">Username</label>
           <input
+            id="login-username"
             type="text"
             autoFocus
             value={username}
@@ -64,7 +67,9 @@ export default function LoginPage() {
             placeholder="Username"
             required
           />
+          <label htmlFor="login-password" className="srOnly">Password</label>
           <input
+            id="login-password"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -75,10 +80,10 @@ export default function LoginPage() {
             {busy ? "Signing in..." : "Sign In"}
           </button>
         </form>
-        <button type="button" className="googleButton" onClick={() => void signInWithGoogle()} disabled={googleBusy}>
+        <button type="button" className="btn--external" onClick={() => void signInWithGoogle()} disabled={googleBusy}>
           {googleBusy ? "Redirecting..." : "Continue with Google"}
         </button>
-        {error ? <p className="errorBanner">{error}</p> : null}
+        {error ? <ErrorBanner message={error} /> : null}
       </section>
     </main>
   );
