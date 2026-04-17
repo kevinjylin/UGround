@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { env, isAuthEnabled } from "./env";
 import { verifyPassword } from "./password";
-import { getAuthUserByUsername } from "./supabase";
+import { getAuthUserByIdentifier } from "./supabase";
 
 const getProviderUserId = (provider: string, id: string): string =>
   `${provider}:${id}`;
@@ -44,23 +44,23 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        username: { label: "Username", type: "text" },
+        username: { label: "Email or username", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const username =
+        const identifier =
           typeof credentials?.username === "string"
             ? credentials.username.trim().toLowerCase()
             : "";
         const password =
           typeof credentials?.password === "string" ? credentials.password : "";
 
-        if (!username || !password) {
+        if (!identifier || !password) {
           return null;
         }
 
         try {
-          const user = await getAuthUserByUsername(username);
+          const user = await getAuthUserByIdentifier(identifier);
 
           if (
             user &&
@@ -82,12 +82,12 @@ export const authOptions: NextAuthOptions = {
         if (
           env.authUsername &&
           env.authPassword &&
-          username === env.authUsername.toLowerCase() &&
+          identifier === env.authUsername.toLowerCase() &&
           password === env.authPassword
         ) {
           return {
-            id: username,
-            name: username,
+            id: identifier,
+            name: identifier,
           };
         }
 

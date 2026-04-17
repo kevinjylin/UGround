@@ -60,10 +60,45 @@ execute function set_updated_at();
 create table if not exists auth_users (
   id uuid primary key default gen_random_uuid(),
   username text not null unique,
+  email text not null,
   password_hash text not null,
   password_salt text not null,
   created_at timestamptz not null default now()
 );
+
+alter table auth_users
+add column if not exists email text;
+
+update auth_users
+set email = username || '@placeholder.invalid'
+where email is null;
+
+update auth_users
+set email = lower(email);
+
+alter table auth_users
+alter column email set not null;
+
+alter table auth_users
+drop constraint if exists auth_users_email_lowercase;
+
+alter table auth_users
+add constraint auth_users_email_lowercase check (email = lower(email));
+
+create unique index if not exists auth_users_email_unique_idx
+on auth_users (email);
+
+create table if not exists password_resets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth_users(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists password_resets_user_idx
+on password_resets (user_id);
 
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),

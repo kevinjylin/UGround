@@ -64,7 +64,7 @@ export default function LandingPage() {
 
         <div className="landingMedia anim-fadeScale" aria-label="Concert crowd">
           <Image
-            src="https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=1200&q=82"
+            src="/concert-crowd.jpg"
             alt="A packed concert crowd under red stage lights"
             fill
             priority

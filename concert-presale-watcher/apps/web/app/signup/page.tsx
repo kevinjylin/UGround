@@ -9,6 +9,7 @@ import ErrorBanner from "../components/ErrorBanner";
 export default function SignupPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -23,9 +24,13 @@ export default function SignupPage() {
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, email, password }),
       });
-      const json = (await res.json()) as { ok?: boolean; error?: string; username?: string };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        username?: string;
+      };
 
       if (!res.ok || json.error || !json.ok) {
         throw new Error(json.error ?? "Could not create your account.");
@@ -39,7 +44,9 @@ export default function SignupPage() {
       });
 
       if (result?.error) {
-        throw new Error("Account created, but automatic sign-in failed. Try signing in manually.");
+        throw new Error(
+          "Account created, but automatic sign-in failed. Try signing in manually.",
+        );
       }
 
       router.replace(result?.url ?? "/dashboard");
@@ -84,6 +91,18 @@ export default function SignupPage() {
             maxLength={40}
             required
           />
+          <label htmlFor="signup-email" className="srOnly">
+            Email
+          </label>
+          <input
+            id="signup-email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="Email"
+            required
+          />
           <label htmlFor="signup-password" className="srOnly">
             Password
           </label>
@@ -106,7 +125,12 @@ export default function SignupPage() {
           <span>or</span>
         </div>
 
-        <button type="button" className="btn--external" onClick={() => void signUpWithGoogle()} disabled={googleBusy}>
+        <button
+          type="button"
+          className="btn--external"
+          onClick={() => void signUpWithGoogle()}
+          disabled={googleBusy}
+        >
           {googleBusy ? "Redirecting..." : "Continue with Google"}
         </button>
 

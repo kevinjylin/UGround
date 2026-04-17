@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
-import { createAuthUser, getAuthUserByUsername } from "../../../lib/supabase";
+import {
+  createAuthUser,
+  getAuthUserByEmail,
+  getAuthUserByUsername,
+} from "../../../lib/supabase";
 import { hashPassword } from "../../../lib/password";
 
 const usernamePattern = /^[a-z0-9_.-]+$/;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const normalizeUsername = (value: unknown): string => {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+};
+
+const normalizeEmail = (value: unknown): string => {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 };
 
@@ -14,29 +23,63 @@ const normalizePassword = (value: unknown): string => {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { username?: unknown; password?: unknown };
+    const body = (await request.json()) as {
+      username?: unknown;
+      email?: unknown;
+      password?: unknown;
+    };
     const username = normalizeUsername(body.username);
+    const email = normalizeEmail(body.email);
     const password = normalizePassword(body.password);
 
-    if (username.length < 3 || username.length > 40 || !usernamePattern.test(username)) {
+    if (
+      username.length < 3 ||
+      username.length > 40 ||
+      !usernamePattern.test(username)
+    ) {
       return NextResponse.json(
-        { error: "Username must be 3-40 characters and can only use letters, numbers, dots, underscores, or hyphens." },
+        {
+          error:
+            "Username must be 3-40 characters and can only use letters, numbers, dots, underscores, or hyphens.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!emailPattern.test(email)) {
+      return NextResponse.json(
+        { error: "Enter a valid email address." },
         { status: 400 },
       );
     }
 
     if (password.length < 8) {
-      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Password must be at least 8 characters." },
+        { status: 400 },
+      );
     }
 
     const existingUser = await getAuthUserByUsername(username);
     if (existingUser) {
-      return NextResponse.json({ error: "That username is already taken." }, { status: 409 });
+      return NextResponse.json(
+        { error: "That username is already taken." },
+        { status: 409 },
+      );
+    }
+
+    const existingEmail = await getAuthUserByEmail(email);
+    if (existingEmail) {
+      return NextResponse.json(
+        { error: "That email is already in use." },
+        { status: 409 },
+      );
     }
 
     const { hash, salt } = await hashPassword(password);
     await createAuthUser({
       username,
+      email,
       passwordHash: hash,
       passwordSalt: salt,
     });
@@ -46,7 +89,10 @@ export async function POST(request: Request) {
     const message = (caught as Error).message;
 
     if (message.includes("23505")) {
-      return NextResponse.json({ error: "That username is already taken." }, { status: 409 });
+      return NextResponse.json(
+        { error: "That username or email is already taken." },
+        { status: 409 },
+      );
     }
 
     return NextResponse.json({ error: message }, { status: 500 });

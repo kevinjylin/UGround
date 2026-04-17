@@ -8,7 +8,7 @@ import ErrorBanner from "../components/ErrorBanner";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -22,14 +22,15 @@ export default function LoginPage() {
     try {
       const nextPath = new URLSearchParams(window.location.search).get("next");
       const result = await signIn("credentials", {
-        username,
+        username: identifier,
         password,
         redirect: false,
-        callbackUrl: nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard",
+        callbackUrl:
+          nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard",
       });
 
       if (result?.error) {
-        throw new Error("Invalid username or password");
+        throw new Error("Invalid email, username, or password");
       }
 
       router.replace(result?.url ?? "/dashboard");
@@ -47,7 +48,8 @@ export default function LoginPage() {
     const nextPath = new URLSearchParams(window.location.search).get("next");
 
     await signIn("google", {
-      callbackUrl: nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard",
+      callbackUrl:
+        nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard",
     });
   };
 
@@ -56,19 +58,26 @@ export default function LoginPage() {
       <section className="loginPanel">
         <span className="wordmark">UGround</span>
         <h1>Sign In</h1>
-        <p className="helpText">Use username/password or continue with Google.</p>
+        <p className="helpText">
+          Use email, username, or continue with Google.
+        </p>
         <form className="stack" onSubmit={submit}>
-          <label htmlFor="login-username" className="srOnly">Username</label>
+          <label htmlFor="login-identifier" className="srOnly">
+            Email or username
+          </label>
           <input
-            id="login-username"
+            id="login-identifier"
             type="text"
+            autoComplete="username"
             autoFocus
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            placeholder="Username"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            placeholder="Email or username"
             required
           />
-          <label htmlFor="login-password" className="srOnly">Password</label>
+          <label htmlFor="login-password" className="srOnly">
+            Password
+          </label>
           <input
             id="login-password"
             type="password"
@@ -77,11 +86,19 @@ export default function LoginPage() {
             placeholder="Password"
             required
           />
+          <div className="authInlineLinks">
+            <Link href="/forgot-password">Forgot password?</Link>
+          </div>
           <button type="submit" disabled={busy}>
             {busy ? "Signing in..." : "Sign In"}
           </button>
         </form>
-        <button type="button" className="btn--external" onClick={() => void signInWithGoogle()} disabled={googleBusy}>
+        <button
+          type="button"
+          className="btn--external"
+          onClick={() => void signInWithGoogle()}
+          disabled={googleBusy}
+        >
           {googleBusy ? "Redirecting..." : "Continue with Google"}
         </button>
         {error ? <ErrorBanner message={error} /> : null}

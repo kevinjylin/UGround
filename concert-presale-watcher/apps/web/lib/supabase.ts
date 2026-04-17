@@ -47,15 +47,32 @@ interface UpsertNotificationSettingsInput {
 export interface AuthUserRecord {
   id: string;
   username: string;
+  email: string;
   password_hash: string;
   password_salt: string;
   created_at: string;
 }
 
+interface PasswordResetRecord {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+}
+
 interface CreateAuthUserInput {
   username: string;
+  email: string;
   passwordHash: string;
   passwordSalt: string;
+}
+
+interface CreatePasswordResetInput {
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
 }
 
 const getBaseUrl = (): string => {
@@ -164,12 +181,19 @@ export const deleteWatchArtist = async (id: string, userId: string): Promise<voi
   });
 };
 
-export const getAuthUserByUsername = async (username: string): Promise<AuthUserRecord | null> => {
+const normalizeAuthLookupValue = (value: string): string =>
+  value.trim().toLowerCase();
+
+export const getAuthUserByUsername = async (
+  username: string,
+): Promise<AuthUserRecord | null> => {
   if (!env.supabaseUrl || !env.supabaseServiceKey) {
     return null;
   }
 
-  const encodedUsername = encodeURIComponent(username);
+  const encodedUsername = encodeURIComponent(
+    normalizeAuthLookupValue(username),
+  );
   const users = await supabaseRequest<AuthUserRecord[]>(
     `/auth_users?select=*&username=eq.${encodedUsername}&limit=1`,
     {
@@ -183,7 +207,39 @@ export const getAuthUserByUsername = async (username: string): Promise<AuthUserR
   return users[0] ?? null;
 };
 
-export const createAuthUser = async (input: CreateAuthUserInput): Promise<AuthUserRecord> => {
+export const getAuthUserByEmail = async (
+  email: string,
+): Promise<AuthUserRecord | null> => {
+  if (!env.supabaseUrl || !env.supabaseServiceKey) {
+    return null;
+  }
+
+  const encodedEmail = encodeURIComponent(normalizeAuthLookupValue(email));
+  const users = await supabaseRequest<AuthUserRecord[]>(
+    `/auth_users?select=*&email=eq.${encodedEmail}&limit=1`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  return users[0] ?? null;
+};
+
+export const getAuthUserByIdentifier = async (
+  identifier: string,
+): Promise<AuthUserRecord | null> => {
+  const normalizedIdentifier = normalizeAuthLookupValue(identifier);
+  return normalizedIdentifier.includes("@")
+    ? getAuthUserByEmail(normalizedIdentifier)
+    : getAuthUserByUsername(normalizedIdentifier);
+};
+
+export const createAuthUser = async (
+  input: CreateAuthUserInput,
+): Promise<AuthUserRecord> => {
   return supabaseRequest<AuthUserRecord>(
     "/auth_users?select=*",
     {
@@ -193,11 +249,102 @@ export const createAuthUser = async (input: CreateAuthUserInput): Promise<AuthUs
       },
       body: JSON.stringify({
         username: input.username,
+        email: input.email,
         password_hash: input.passwordHash,
         password_salt: input.passwordSalt,
       }),
     },
     true,
+  );
+};
+
+export const createPasswordReset = async (
+  input: CreatePasswordResetInput,
+): Promise<PasswordResetRecord> => {
+  return supabaseRequest<PasswordResetRecord>(
+    "/password_resets?select=*",
+    {
+      method: "POST",
+      headers: {
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        user_id: input.userId,
+        token_hash: input.tokenHash,
+        expires_at: input.expiresAt,
+      }),
+    },
+    true,
+  );
+};
+
+export const getPasswordResetByTokenHash = async (
+  tokenHash: string,
+): Promise<PasswordResetRecord | null> => {
+  if (!env.supabaseUrl || !env.supabaseServiceKey) {
+    return null;
+  }
+
+  const encodedTokenHash = encodeURIComponent(tokenHash);
+  const records = await supabaseRequest<PasswordResetRecord[]>(
+    `/password_resets?select=*&token_hash=eq.${encodedTokenHash}&limit=1`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  return records[0] ?? null;
+};
+
+export const markPasswordResetUsed = async (id: string): Promise<void> => {
+  await supabaseRequest<void>(
+    `/password_resets?id=eq.${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: {
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        used_at: new Date().toISOString(),
+      }),
+    },
+  );
+};
+
+export const deletePasswordResetsForUser = async (
+  userId: string,
+): Promise<void> => {
+  await supabaseRequest<void>(
+    `/password_resets?user_id=eq.${encodeURIComponent(userId)}&used_at=is.null`,
+    {
+      method: "DELETE",
+      headers: {
+        Prefer: "return=minimal",
+      },
+    },
+  );
+};
+
+export const updateAuthUserPassword = async (
+  userId: string,
+  hash: string,
+  salt: string,
+): Promise<void> => {
+  await supabaseRequest<void>(
+    `/auth_users?id=eq.${encodeURIComponent(userId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        password_hash: hash,
+        password_salt: salt,
+      }),
+    },
   );
 };
 
