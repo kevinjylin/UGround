@@ -35,6 +35,17 @@ export const hasSupabaseConfig = (): boolean => {
   return Boolean(env.supabaseUrl && env.supabaseServiceKey);
 };
 
+export const hasExplicitAuthConfig = (): boolean => {
+  return Boolean(
+    (env.authUsername && env.authPassword) ||
+    (env.googleClientId && env.googleClientSecret),
+  );
+};
+
+export const isAuthEnabled = (): boolean => {
+  return hasExplicitAuthConfig();
+};
+
 export const assertSupabaseConfig = (): void => {
   if (!hasSupabaseConfig()) {
     throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");

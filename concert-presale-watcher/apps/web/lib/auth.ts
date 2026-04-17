@@ -1,14 +1,16 @@
 import { getServerSession, type NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
-import { env } from "./env";
+import { env, isAuthEnabled } from "./env";
 import { verifyPassword } from "./password";
 import { getAuthUserByUsername } from "./supabase";
 
-const getProviderUserId = (provider: string, id: string): string => `${provider}:${id}`;
+const getProviderUserId = (provider: string, id: string): string =>
+  `${provider}:${id}`;
 
 export const authOptions: NextAuthOptions = {
   secret: env.authSecret,
+  useSecureCookies: process.env.NODE_ENV === "production",
   session: {
     strategy: "jwt",
   },
@@ -26,7 +28,9 @@ export const authOptions: NextAuthOptions = {
       return mutableToken;
     },
     session({ session, token }) {
-      const mutableSession = session as typeof session & { user?: { id?: string } };
+      const mutableSession = session as typeof session & {
+        user?: { id?: string };
+      };
       const userId = (token as typeof token & { userId?: string }).userId;
 
       if (mutableSession.user && userId) {
@@ -44,8 +48,12 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const username = typeof credentials?.username === "string" ? credentials.username.trim().toLowerCase() : "";
-        const password = typeof credentials?.password === "string" ? credentials.password : "";
+        const username =
+          typeof credentials?.username === "string"
+            ? credentials.username.trim().toLowerCase()
+            : "";
+        const password =
+          typeof credentials?.password === "string" ? credentials.password : "";
 
         if (!username || !password) {
           return null;
@@ -54,7 +62,14 @@ export const authOptions: NextAuthOptions = {
         try {
           const user = await getAuthUserByUsername(username);
 
-          if (user && (await verifyPassword(password, user.password_salt, user.password_hash))) {
+          if (
+            user &&
+            (await verifyPassword(
+              password,
+              user.password_salt,
+              user.password_hash,
+            ))
+          ) {
             return {
               id: user.id,
               name: user.username,
@@ -64,7 +79,12 @@ export const authOptions: NextAuthOptions = {
           // Keep the env-based login usable if the auth_users table is temporarily unavailable.
         }
 
-        if (env.authUsername && env.authPassword && username === env.authUsername.toLowerCase() && password === env.authPassword) {
+        if (
+          env.authUsername &&
+          env.authPassword &&
+          username === env.authUsername.toLowerCase() &&
+          password === env.authPassword
+        ) {
           return {
             id: username,
             name: username,
@@ -86,6 +106,10 @@ export const authOptions: NextAuthOptions = {
 };
 
 export const getCurrentUserId = async (): Promise<string | null> => {
+  if (!isAuthEnabled()) {
+    return "legacy";
+  }
+
   const session = await getServerSession(authOptions);
   return (session?.user as { id?: string } | undefined)?.id ?? null;
 };

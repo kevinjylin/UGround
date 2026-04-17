@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { env } from "./lib/env";
+import { env, isAuthEnabled } from "./lib/env";
 import { isPollRequestAuthorized } from "./lib/pollAuth";
 
-const isAuthEnabled = Boolean(
-  (env.supabaseUrl && env.supabaseServiceKey) ||
-  (env.authUsername && env.authPassword) ||
-    (env.googleClientId && env.googleClientSecret),
-);
-
-const publicPaths = new Set(["/", "/login", "/signup", "/api/health", "/api/signup"]);
+const publicPaths = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/api/health",
+  "/api/signup",
+]);
 
 const isStaticAsset = (pathname: string): boolean => {
   return (
@@ -26,14 +26,18 @@ const isStaticAsset = (pathname: string): boolean => {
 };
 
 export async function proxy(request: NextRequest) {
-  if (!isAuthEnabled) {
+  if (!isAuthEnabled()) {
     return NextResponse.next();
   }
 
   const { pathname } = request.nextUrl;
 
-  if (isStaticAsset(pathname) || pathname.startsWith("/api/auth") || publicPaths.has(pathname)) {
-    if ((pathname === "/login" || pathname === "/signup") && isAuthEnabled) {
+  if (
+    isStaticAsset(pathname) ||
+    pathname.startsWith("/api/auth") ||
+    publicPaths.has(pathname)
+  ) {
+    if ((pathname === "/login" || pathname === "/signup") && isAuthEnabled()) {
       const token = await getToken({
         req: request,
         secret: env.authSecret,
@@ -47,7 +51,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if ((pathname === "/api/poll" || pathname === "/api/cron/poll") && isPollRequestAuthorized(request)) {
+  if (
+    (pathname === "/api/poll" || pathname === "/api/cron/poll") &&
+    isPollRequestAuthorized(request)
+  ) {
     return NextResponse.next();
   }
 
