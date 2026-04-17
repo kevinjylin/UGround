@@ -247,6 +247,34 @@ button:disabled {
   margin-top: 14px;
 }
 
+.actionRow,
+.confirmRow,
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actionRow,
+.confirmRow {
+  justify-content: space-between;
+}
+
+.checkRow {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.checkRow input {
+  min-height: auto;
+  width: auto;
+}
+
+.confirmRow input {
+  min-width: 0;
+  flex: 1;
+}
+
 .list {
   list-style: none;
   display: grid;

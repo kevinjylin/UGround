@@ -4,6 +4,7 @@ import type {
   AlertType,
   EventRecord,
   NormalizedEvent,
+  NotificationSettingsRecord,
   SnapshotRecord,
   WatchArtist,
 } from "./types";
@@ -25,6 +26,22 @@ interface CreateAlertInput {
   payload?: Record<string, unknown>;
   sentChannels: string[];
   sentAt: string | null;
+}
+
+interface UpsertNotificationSettingsInput {
+  userId: string;
+  discordWebhookEncrypted?: string | null;
+  emailEncrypted?: string | null;
+  phoneEncrypted?: string | null;
+  discordEnabled?: boolean;
+  emailEnabled?: boolean;
+  smsEnabled?: boolean;
+  emailConfirmedAt?: string | null;
+  smsConfirmedAt?: string | null;
+  emailConfirmationHash?: string | null;
+  emailConfirmationExpiresAt?: string | null;
+  smsConfirmationHash?: string | null;
+  smsConfirmationExpiresAt?: string | null;
 }
 
 export interface AuthUserRecord {
@@ -324,6 +341,108 @@ export const createAlert = async (input: CreateAlertInput): Promise<AlertRecord>
         sent_channels: input.sentChannels,
         sent_at: input.sentAt,
       }),
+    },
+    true,
+  );
+};
+
+export const getNotificationSettings = async (
+  userId: string,
+): Promise<NotificationSettingsRecord | null> => {
+  if (!env.supabaseUrl || !env.supabaseServiceKey) {
+    return null;
+  }
+
+  const encodedUserId = encodeURIComponent(userId);
+  const settings = await supabaseRequest<NotificationSettingsRecord[]>(
+    `/notification_settings?select=*&user_id=eq.${encodedUserId}&limit=1`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  return settings[0] ?? null;
+};
+
+export const upsertNotificationSettings = async (
+  input: UpsertNotificationSettingsInput,
+): Promise<NotificationSettingsRecord> => {
+  const existing = await getNotificationSettings(input.userId);
+  const payload: Record<string, unknown> = {
+    user_id: input.userId,
+    discord_webhook_encrypted: existing?.discord_webhook_encrypted ?? null,
+    email_encrypted: existing?.email_encrypted ?? null,
+    phone_encrypted: existing?.phone_encrypted ?? null,
+    discord_enabled: existing?.discord_enabled ?? false,
+    email_enabled: existing?.email_enabled ?? false,
+    sms_enabled: existing?.sms_enabled ?? false,
+    email_confirmed_at: existing?.email_confirmed_at ?? null,
+    sms_confirmed_at: existing?.sms_confirmed_at ?? null,
+    email_confirmation_hash: existing?.email_confirmation_hash ?? null,
+    email_confirmation_expires_at: existing?.email_confirmation_expires_at ?? null,
+    sms_confirmation_hash: existing?.sms_confirmation_hash ?? null,
+    sms_confirmation_expires_at: existing?.sms_confirmation_expires_at ?? null,
+  };
+
+  if ("discordWebhookEncrypted" in input) {
+    payload.discord_webhook_encrypted = input.discordWebhookEncrypted;
+  }
+
+  if ("emailEncrypted" in input) {
+    payload.email_encrypted = input.emailEncrypted;
+  }
+
+  if ("phoneEncrypted" in input) {
+    payload.phone_encrypted = input.phoneEncrypted;
+  }
+
+  if ("discordEnabled" in input) {
+    payload.discord_enabled = input.discordEnabled;
+  }
+
+  if ("emailEnabled" in input) {
+    payload.email_enabled = input.emailEnabled;
+  }
+
+  if ("smsEnabled" in input) {
+    payload.sms_enabled = input.smsEnabled;
+  }
+
+  if ("emailConfirmedAt" in input) {
+    payload.email_confirmed_at = input.emailConfirmedAt;
+  }
+
+  if ("smsConfirmedAt" in input) {
+    payload.sms_confirmed_at = input.smsConfirmedAt;
+  }
+
+  if ("emailConfirmationHash" in input) {
+    payload.email_confirmation_hash = input.emailConfirmationHash;
+  }
+
+  if ("emailConfirmationExpiresAt" in input) {
+    payload.email_confirmation_expires_at = input.emailConfirmationExpiresAt;
+  }
+
+  if ("smsConfirmationHash" in input) {
+    payload.sms_confirmation_hash = input.smsConfirmationHash;
+  }
+
+  if ("smsConfirmationExpiresAt" in input) {
+    payload.sms_confirmation_expires_at = input.smsConfirmationExpiresAt;
+  }
+
+  return supabaseRequest<NotificationSettingsRecord>(
+    "/notification_settings?select=*&on_conflict=user_id",
+    {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify(payload),
     },
     true,
   );

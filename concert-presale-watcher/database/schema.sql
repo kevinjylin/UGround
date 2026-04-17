@@ -144,3 +144,27 @@ on alerts (created_at desc);
 
 create index if not exists alerts_user_created_at_idx
 on alerts (user_id, created_at desc);
+
+create table if not exists notification_settings (
+  user_id text primary key,
+  discord_webhook_encrypted text,
+  email_encrypted text,
+  phone_encrypted text,
+  discord_enabled boolean not null default false,
+  email_enabled boolean not null default false,
+  sms_enabled boolean not null default false,
+  email_confirmed_at timestamptz,
+  sms_confirmed_at timestamptz,
+  email_confirmation_hash text,
+  email_confirmation_expires_at timestamptz,
+  sms_confirmation_hash text,
+  sms_confirmation_expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists notification_settings_set_updated_at on notification_settings;
+create trigger notification_settings_set_updated_at
+before update on notification_settings
+for each row
+execute function set_updated_at();

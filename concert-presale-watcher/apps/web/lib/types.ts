@@ -69,6 +69,44 @@ export interface AlertRecord {
   created_at: string;
 }
 
+export interface NotificationSettingsRecord {
+  user_id: string;
+  discord_webhook_encrypted: string | null;
+  email_encrypted: string | null;
+  phone_encrypted: string | null;
+  discord_enabled: boolean;
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  email_confirmed_at: string | null;
+  sms_confirmed_at: string | null;
+  email_confirmation_hash: string | null;
+  email_confirmation_expires_at: string | null;
+  sms_confirmation_hash: string | null;
+  sms_confirmation_expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationSettingsResponse {
+  discordWebhook: {
+    configured: boolean;
+    enabled: boolean;
+    masked: string | null;
+  };
+  email: {
+    configured: boolean;
+    enabled: boolean;
+    confirmed: boolean;
+    masked: string | null;
+  };
+  phone: {
+    configured: boolean;
+    enabled: boolean;
+    confirmed: boolean;
+    masked: string | null;
+  };
+}
+
 export interface NormalizedEvent {
   user_id: string;
   source_slug: SourceSlug;

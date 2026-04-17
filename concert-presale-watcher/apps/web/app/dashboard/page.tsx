@@ -2,19 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { signOut } from "next-auth/react";
-import type { AlertRecord, EventRecord, HealthResponse, PollResult, WatchArtist } from "../../lib/types";
+import type { AlertRecord, EventRecord, HealthResponse, NotificationSettingsResponse, PollResult, WatchArtist } from "../../lib/types";
 import ErrorBanner from "../components/ErrorBanner";
 import StatCard from "../components/StatCard";
 import WatchlistPanel from "../components/WatchlistPanel";
 import EventList from "../components/EventList";
 import AlertList from "../components/AlertList";
 import IntegrationsPanel from "../components/IntegrationsPanel";
+import NotificationSettingsPanel from "../components/NotificationSettingsPanel";
 
 export default function DashboardPage() {
   const [artists, setArtists] = useState<WatchArtist[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettingsResponse | null>(null);
 
   const [city, setCity] = useState("");
   const [stateRegion, setStateRegion] = useState("");
@@ -29,24 +31,27 @@ export default function DashboardPage() {
     setBusy(true);
     setError(null);
     try {
-      const [watchlistRes, eventsRes, alertsRes, healthRes] = await Promise.all([
+      const [watchlistRes, eventsRes, alertsRes, healthRes, notificationSettingsRes] = await Promise.all([
         fetch("/api/watchlist", { cache: "no-store" }),
         fetch("/api/events?limit=80", { cache: "no-store" }),
         fetch("/api/alerts?limit=60", { cache: "no-store" }),
         fetch("/api/health", { cache: "no-store" }),
+        fetch("/api/notification-settings", { cache: "no-store" }),
       ]);
       const watchlistJson = (await watchlistRes.json()) as { artists?: WatchArtist[]; error?: string };
       const eventsJson = (await eventsRes.json()) as { events?: EventRecord[]; error?: string };
       const alertsJson = (await alertsRes.json()) as { alerts?: AlertRecord[]; error?: string };
       const healthJson = (await healthRes.json()) as HealthResponse;
+      const notificationSettingsJson = (await notificationSettingsRes.json()) as { settings?: NotificationSettingsResponse; error?: string };
 
-      if (watchlistJson.error || eventsJson.error || alertsJson.error) {
-        throw new Error(watchlistJson.error ?? eventsJson.error ?? alertsJson.error);
+      if (watchlistJson.error || eventsJson.error || alertsJson.error || notificationSettingsJson.error) {
+        throw new Error(watchlistJson.error ?? eventsJson.error ?? alertsJson.error ?? notificationSettingsJson.error);
       }
       setArtists(watchlistJson.artists ?? []);
       setEvents(eventsJson.events ?? []);
       setAlerts(alertsJson.alerts ?? []);
       setHealth(healthJson);
+      setNotificationSettings(notificationSettingsJson.settings ?? null);
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
@@ -108,6 +113,51 @@ export default function DashboardPage() {
     }
   };
 
+  const saveNotificationSettings = async (input: {
+    discordWebhook?: string;
+    discordEnabled: boolean;
+    email?: string;
+    emailEnabled: boolean;
+    phone?: string;
+    smsEnabled: boolean;
+  }) => {
+    setError(null);
+    try {
+      const res = await fetch("/api/notification-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const json = (await res.json()) as { settings?: NotificationSettingsResponse; error?: string };
+      if (!res.ok || json.error || !json.settings) throw new Error(json.error ?? "Failed to save alert destinations");
+      setNotificationSettings(json.settings);
+    } catch (caught) {
+      setError((caught as Error).message);
+      throw caught;
+    }
+  };
+
+  const runNotificationAction = async (path: string, body?: Record<string, unknown>) => {
+    setError(null);
+    try {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const json = (await res.json()) as { settings?: NotificationSettingsResponse; error?: string };
+      if (!res.ok || json.error) throw new Error(json.error ?? "Notification action failed");
+      if (json.settings) {
+        setNotificationSettings(json.settings);
+      } else {
+        await refreshAll();
+      }
+    } catch (caught) {
+      setError((caught as Error).message);
+      throw caught;
+    }
+  };
+
   return (
     <div className="pageShell" aria-busy={busy}>
       <header className="hero">
@@ -153,7 +203,18 @@ export default function DashboardPage() {
         <AlertList alerts={alerts} loading={busy} />
       </section>
 
-      <IntegrationsPanel health={health} />
+      <section className="grid twoCol">
+        <NotificationSettingsPanel
+          settings={notificationSettings}
+          busy={busy}
+          onSave={saveNotificationSettings}
+          onTestDiscord={() => runNotificationAction("/api/notification-settings/test-discord")}
+          onSendEmailConfirmation={() => runNotificationAction("/api/notification-settings/send-email-confirmation")}
+          onSendSmsConfirmation={() => runNotificationAction("/api/notification-settings/send-sms-confirmation")}
+          onConfirmSms={(code) => runNotificationAction("/api/notification-settings/confirm-sms", { code })}
+        />
+        <IntegrationsPanel health={health} />
+      </section>
     </div>
   );
 }

@@ -18,10 +18,10 @@ export async function GET() {
       secret: Boolean(env.authSecret),
     },
     alertChannelsConfigured: {
-      discord: Boolean(env.discordWebhookUrl),
-      email: Boolean(env.resendApiKey && env.alertFromEmail && env.alertToEmail),
+      discord: true,
+      email: Boolean(env.resendApiKey && env.alertFromEmail),
       sms: Boolean(
-        env.twilioAccountSid && env.twilioAuthToken && env.twilioFromPhone && env.twilioToPhone,
+        env.twilioAccountSid && env.twilioAuthToken && env.twilioFromPhone,
       ),
     },
   });

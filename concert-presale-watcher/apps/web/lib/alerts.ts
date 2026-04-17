@@ -1,4 +1,5 @@
-import { env } from "./env";
+import { sendDiscordMessage, sendEmailMessage, sendSmsMessage } from "./notificationDelivery";
+import { getResolvedNotificationSettings } from "./notificationSettings";
 import type { AlertType, EventRecord } from "./types";
 
 export interface DeliveryResult {
@@ -18,87 +19,20 @@ const formatAlertMessage = (alertType: AlertType, event: EventRecord): string =>
   return `${pieces.join(" | ")} | ${event.ticket_url ?? "No ticket URL"}`;
 };
 
-const sendDiscordAlert = async (message: string): Promise<boolean> => {
-  if (!env.discordWebhookUrl) {
-    return false;
-  }
-
-  const response = await fetch(env.discordWebhookUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      content: message,
-    }),
-    cache: "no-store",
-  });
-
-  return response.ok;
-};
-
-const sendEmailAlert = async (subject: string, message: string): Promise<boolean> => {
-  if (!env.resendApiKey || !env.alertFromEmail || !env.alertToEmail) {
-    return false;
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: env.alertFromEmail,
-      to: [env.alertToEmail],
-      subject,
-      text: message,
-    }),
-    cache: "no-store",
-  });
-
-  return response.ok;
-};
-
-const sendSmsAlert = async (message: string): Promise<boolean> => {
-  if (
-    !env.twilioAccountSid ||
-    !env.twilioAuthToken ||
-    !env.twilioFromPhone ||
-    !env.twilioToPhone
-  ) {
-    return false;
-  }
-
-  const basic = Buffer.from(`${env.twilioAccountSid}:${env.twilioAuthToken}`).toString("base64");
-  const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${env.twilioAccountSid}/Messages.json`;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      From: env.twilioFromPhone,
-      To: env.twilioToPhone,
-      Body: message,
-    }),
-    cache: "no-store",
-  });
-
-  return response.ok;
-};
-
 export const deliverAlert = async (alertType: AlertType, event: EventRecord): Promise<DeliveryResult> => {
   const message = formatAlertMessage(alertType, event);
   const subject = `Concert Watch Alert: ${event.artist_name}`;
+  const settings = await getResolvedNotificationSettings(event.user_id);
 
   const channels: string[] = [];
   const errors: string[] = [];
 
   try {
-    if (await sendDiscordAlert(message)) {
+    if (
+      settings.discordEnabled &&
+      settings.discordWebhook &&
+      (await sendDiscordMessage(settings.discordWebhook, message))
+    ) {
       channels.push("discord");
     }
   } catch (error) {
@@ -106,7 +40,12 @@ export const deliverAlert = async (alertType: AlertType, event: EventRecord): Pr
   }
 
   try {
-    if (await sendEmailAlert(subject, message)) {
+    if (
+      settings.emailEnabled &&
+      settings.emailConfirmed &&
+      settings.email &&
+      (await sendEmailMessage(settings.email, subject, message))
+    ) {
       channels.push("email");
     }
   } catch (error) {
@@ -114,7 +53,12 @@ export const deliverAlert = async (alertType: AlertType, event: EventRecord): Pr
   }
 
   try {
-    if (await sendSmsAlert(message)) {
+    if (
+      settings.smsEnabled &&
+      settings.smsConfirmed &&
+      settings.phone &&
+      (await sendSmsMessage(settings.phone, message))
+    ) {
       channels.push("sms");
     }
   } catch (error) {

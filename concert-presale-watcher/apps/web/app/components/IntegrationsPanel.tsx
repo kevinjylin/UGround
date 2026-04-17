@@ -41,11 +41,11 @@ export default function IntegrationsPanel({ health }: IntegrationsPanelProps) {
             </div>
           </fieldset>
           <fieldset className="fieldsetSection">
-            <legend>Alert Channels</legend>
+            <legend>Alert Providers</legend>
             <div className="healthGrid">
-              <StatusRow label="Discord" configured={health.alertChannelsConfigured.discord} />
-              <StatusRow label="Email" configured={health.alertChannelsConfigured.email} />
-              <StatusRow label="SMS" configured={health.alertChannelsConfigured.sms} />
+              <StatusRow label="Discord webhooks" configured={health.alertChannelsConfigured.discord} />
+              <StatusRow label="Email provider" configured={health.alertChannelsConfigured.email} />
+              <StatusRow label="SMS provider" configured={health.alertChannelsConfigured.sms} />
             </div>
           </fieldset>
         </div>

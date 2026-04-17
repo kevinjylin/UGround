@@ -34,9 +34,10 @@ Set whichever integrations you want:
 - Ticketmaster: `TICKETMASTER_API_KEY`
 - Eventbrite: `EVENTBRITE_PRIVATE_TOKEN`
 - Spotify import: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`
-- Email alerts: `RESEND_API_KEY`, `ALERT_FROM_EMAIL`, `ALERT_TO_EMAIL`
-- SMS alerts: Twilio vars
-- Discord alerts: `DISCORD_WEBHOOK_URL`
+- Email alerts: `RESEND_API_KEY`, `ALERT_FROM_EMAIL`
+- SMS alerts: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_PHONE`
+- Per-user alert destinations: users enter Discord webhooks, email addresses, and phone numbers in the dashboard.
+- Alert settings encryption: `ALERT_SETTINGS_ENCRYPTION_KEY` (generate with `openssl rand -base64 32`)
 
 Optional poll protection:
 - Set `POLL_SECRET` in web and worker.
@@ -78,6 +79,12 @@ Open `http://localhost:3000`.
 - `POST /api/watchlist/import-spotify`
 - `GET /api/events`
 - `GET /api/alerts`
+- `GET/PUT /api/notification-settings`
+- `POST /api/notification-settings/test-discord`
+- `POST /api/notification-settings/send-email-confirmation`
+- `GET /api/notification-settings/confirm-email`
+- `POST /api/notification-settings/send-sms-confirmation`
+- `POST /api/notification-settings/confirm-sms`
 - `POST /api/poll`
 - `GET /api/cron/poll`
 - `GET /api/health`
@@ -90,17 +97,19 @@ Open `http://localhost:3000`.
    - Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
    - Recommended auth: `AUTH_SECRET`, `NEXTAUTH_URL`, `AUTH_USERNAME`, `AUTH_PASSWORD`
    - Optional Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-   - Optional integrations: Ticketmaster/Eventbrite/Spotify/Discord/Resend/Twilio/POLL_SECRET/CRON_SECRET
+   - Optional integrations: Ticketmaster/Eventbrite/Spotify/Resend/Twilio/POLL_SECRET/CRON_SECRET
+   - Required for user alert destinations: `ALERT_SETTINGS_ENCRYPTION_KEY`
 4. Deploy.
 
 Notes:
 - If auth vars are set, Auth.js protects the site and API with a `/login` page.
 - `/api/poll` still works for your worker/cron when it sends `x-poll-secret` matching `POLL_SECRET`.
 - Vercel runs `GET /api/cron/poll` once daily via `apps/web/vercel.json`. Set `CRON_SECRET` so Vercel sends the matching `Authorization: Bearer ...` header; it can be the same value as `POLL_SECRET`.
+- The cron schedule is `0 4 * * *`, targeting 9 PM Los Angeles time during daylight saving time. Use `0 5 * * *` during standard time, or move polling to a timezone-aware scheduler.
 - For more frequent checks, deploy `apps/worker` separately with `WORKER_POLL_URL=https://<your-vercel-domain>/api/poll`, `POLL_SECRET`, and `POLL_INTERVAL_MINUTES`.
 
 ## Notes
 
 - Poll endpoint is admin-style for now (no user auth in MVP).
-- If alert channel keys are missing, alerts are still stored in DB.
+- If alert provider keys or user destinations are missing, alerts are still stored in DB.
 - Start with one city + a constrained artist list before widening coverage.
