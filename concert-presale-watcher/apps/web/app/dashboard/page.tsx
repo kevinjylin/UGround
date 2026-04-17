@@ -2,20 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { signOut } from "next-auth/react";
-import type { AlertRecord, EventRecord, HealthResponse, NotificationSettingsResponse, PollResult, WatchArtist } from "../../lib/types";
+import type { AlertRecord, EventRecord, NotificationSettingsResponse, PollResult, WatchArtist } from "../../lib/types";
 import ErrorBanner from "../components/ErrorBanner";
 import StatCard from "../components/StatCard";
 import WatchlistPanel from "../components/WatchlistPanel";
+import WatchlistList from "../components/WatchlistList";
 import EventList from "../components/EventList";
 import AlertList from "../components/AlertList";
-import IntegrationsPanel from "../components/IntegrationsPanel";
 import NotificationSettingsPanel from "../components/NotificationSettingsPanel";
 
 export default function DashboardPage() {
   const [artists, setArtists] = useState<WatchArtist[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettingsResponse | null>(null);
 
   const [city, setCity] = useState("");
@@ -31,17 +30,15 @@ export default function DashboardPage() {
     setBusy(true);
     setError(null);
     try {
-      const [watchlistRes, eventsRes, alertsRes, healthRes, notificationSettingsRes] = await Promise.all([
+      const [watchlistRes, eventsRes, alertsRes, notificationSettingsRes] = await Promise.all([
         fetch("/api/watchlist", { cache: "no-store" }),
         fetch("/api/events?limit=80", { cache: "no-store" }),
         fetch("/api/alerts?limit=60", { cache: "no-store" }),
-        fetch("/api/health", { cache: "no-store" }),
         fetch("/api/notification-settings", { cache: "no-store" }),
       ]);
       const watchlistJson = (await watchlistRes.json()) as { artists?: WatchArtist[]; error?: string };
       const eventsJson = (await eventsRes.json()) as { events?: EventRecord[]; error?: string };
       const alertsJson = (await alertsRes.json()) as { alerts?: AlertRecord[]; error?: string };
-      const healthJson = (await healthRes.json()) as HealthResponse;
       const notificationSettingsJson = (await notificationSettingsRes.json()) as { settings?: NotificationSettingsResponse; error?: string };
 
       if (watchlistJson.error || eventsJson.error || alertsJson.error || notificationSettingsJson.error) {
@@ -50,7 +47,6 @@ export default function DashboardPage() {
       setArtists(watchlistJson.artists ?? []);
       setEvents(eventsJson.events ?? []);
       setAlerts(alertsJson.alerts ?? []);
-      setHealth(healthJson);
       setNotificationSettings(notificationSettingsJson.settings ?? null);
     } catch (caught) {
       setError((caught as Error).message);
@@ -179,42 +175,47 @@ export default function DashboardPage() {
         <StatCard label="Recent Alerts" value={alerts.length} loading={busy} accent="var(--warning)" />
       </section>
 
-      <section className="grid twoCol">
-        <WatchlistPanel
-          artists={artists}
-          busy={busy}
-          city={city}
-          stateRegion={stateRegion}
-          country={country}
-          onCityChange={setCity}
-          onStateChange={setStateRegion}
-          onCountryChange={setCountry}
-          onAdd={addArtist}
-          onImportSpotify={importFromSpotify}
-          onRemove={removeArtist}
-          onPoll={runPoll}
-          polling={polling}
-          lastPoll={lastPoll}
-        />
-      </section>
-
-      <section className="grid twoCol">
+      {/* Main 60/40 two-column layout */}
+      <div className="mainGrid">
         <EventList events={events} loading={busy} />
-        <AlertList alerts={alerts} loading={busy} />
-      </section>
+        <div className="sideStack">
+          <AlertList alerts={alerts} loading={busy} />
+          <WatchlistPanel
+            busy={busy}
+            city={city}
+            stateRegion={stateRegion}
+            country={country}
+            onCityChange={setCity}
+            onStateChange={setStateRegion}
+            onCountryChange={setCountry}
+            onAdd={addArtist}
+            onImportSpotify={importFromSpotify}
+            onPoll={runPoll}
+            polling={polling}
+            lastPoll={lastPoll}
+          />
+        </div>
+      </div>
 
-      <section className="grid twoCol">
-        <NotificationSettingsPanel
-          settings={notificationSettings}
-          busy={busy}
-          onSave={saveNotificationSettings}
-          onTestDiscord={() => runNotificationAction("/api/notification-settings/test-discord")}
-          onSendEmailConfirmation={() => runNotificationAction("/api/notification-settings/send-email-confirmation")}
-          onSendSmsConfirmation={() => runNotificationAction("/api/notification-settings/send-sms-confirmation")}
-          onConfirmSms={(code) => runNotificationAction("/api/notification-settings/confirm-sms", { code })}
-        />
-        <IntegrationsPanel health={health} />
-      </section>
+      {/* Alert destinations — full width */}
+      <NotificationSettingsPanel
+        settings={notificationSettings}
+        busy={busy}
+        onSave={saveNotificationSettings}
+        onTestDiscord={() => runNotificationAction("/api/notification-settings/test-discord")}
+        onSendEmailConfirmation={() => runNotificationAction("/api/notification-settings/send-email-confirmation")}
+        onSendSmsConfirmation={() => runNotificationAction("/api/notification-settings/send-sms-confirmation")}
+        onConfirmSms={(code) => runNotificationAction("/api/notification-settings/confirm-sms", { code })}
+      />
+
+      {/* Full-width collapsible watchlist */}
+      <details className="watchlistDrawer">
+        <summary className="watchlistDrawerSummary">
+          <span>Followed Artists</span>
+          {!busy && <span className="drawerCount">{artists.length}</span>}
+        </summary>
+        <WatchlistList artists={artists} onRemove={removeArtist} loading={busy} />
+      </details>
     </div>
   );
 }
