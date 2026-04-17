@@ -163,7 +163,7 @@ export default function DashboardPage() {
             Log Out
           </button>
         </div>
-        <h1>get there first.</h1>
+        <h1>dont miss out.</h1>
         <p>Follow artists. Get alerts the moment presales drop.</p>
       </header>
 
