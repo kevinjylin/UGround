@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useId, useState } from "react";
 import type { NotificationSettingsResponse } from "../../lib/types";
+import styles from "../dashboard/dashboard.module.css";
 
 interface NotificationSettingsPanelProps {
   settings: NotificationSettingsResponse | null;
@@ -20,7 +21,11 @@ interface NotificationSettingsPanelProps {
   onConfirmSms: (code: string) => Promise<void>;
 }
 
-const getStatusText = (configured: boolean, enabled: boolean, confirmed?: boolean): string => {
+const getStatusText = (
+  configured: boolean,
+  enabled: boolean,
+  confirmed?: boolean,
+): string => {
   if (!configured) return "Not set";
   if (confirmed === false) return enabled ? "Needs confirmation" : "Saved, off";
   return enabled ? "On" : "Saved, off";
@@ -83,12 +88,12 @@ export default function NotificationSettingsPanel({
   const disabled = busy || saving;
 
   return (
-    <section className="panel notificationPanel">
+    <section className={styles.panel}>
       <h2>Alert Destinations</h2>
-      <form className="stack" onSubmit={handleSave}>
-        <fieldset className="fieldsetSection">
+      <form className={styles.stack} onSubmit={handleSave}>
+        <fieldset className={styles.fieldsetSection}>
           <legend>Discord</legend>
-          <label className="checkRow">
+          <label className={styles.checkRow}>
             <input
               type="checkbox"
               checked={discordEnabled}
@@ -96,27 +101,39 @@ export default function NotificationSettingsPanel({
             />
             Send Discord alerts
           </label>
-          <label htmlFor={`${uid}-discord`} className="srOnly">Discord webhook URL</label>
+          <label htmlFor={`${uid}-discord`} className="srOnly">
+            Discord webhook URL
+          </label>
           <input
             id={`${uid}-discord`}
             type="url"
             value={discordWebhook}
             onChange={(event) => setDiscordWebhook(event.target.value)}
-            placeholder={settings?.discordWebhook.masked ?? "Discord webhook URL"}
+            placeholder={
+              settings?.discordWebhook.masked ?? "Discord webhook URL"
+            }
           />
-          <div className="actionRow">
-            <span className="pill">
-              {getStatusText(Boolean(settings?.discordWebhook.configured), discordEnabled)}
+          <div className={styles.actionRow}>
+            <span className={styles.pill}>
+              {getStatusText(
+                Boolean(settings?.discordWebhook.configured),
+                discordEnabled,
+              )}
             </span>
-            <button type="button" className="btn--secondary" onClick={onTestDiscord} disabled={disabled || !settings?.discordWebhook.configured}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={onTestDiscord}
+              disabled={disabled || !settings?.discordWebhook.configured}
+            >
               Send Test
             </button>
           </div>
         </fieldset>
 
-        <fieldset className="fieldsetSection">
+        <fieldset className={styles.fieldsetSection}>
           <legend>Email</legend>
-          <label className="checkRow">
+          <label className={styles.checkRow}>
             <input
               type="checkbox"
               checked={emailEnabled}
@@ -124,7 +141,9 @@ export default function NotificationSettingsPanel({
             />
             Send email alerts
           </label>
-          <label htmlFor={`${uid}-email`} className="srOnly">Email address</label>
+          <label htmlFor={`${uid}-email`} className="srOnly">
+            Email address
+          </label>
           <input
             id={`${uid}-email`}
             type="email"
@@ -132,19 +151,28 @@ export default function NotificationSettingsPanel({
             onChange={(event) => setEmail(event.target.value)}
             placeholder={settings?.email.masked ?? "Email address"}
           />
-          <div className="actionRow">
-            <span className="pill">
-              {getStatusText(Boolean(settings?.email.configured), emailEnabled, settings?.email.confirmed)}
+          <div className={styles.actionRow}>
+            <span className={styles.pill}>
+              {getStatusText(
+                Boolean(settings?.email.configured),
+                emailEnabled,
+                settings?.email.confirmed,
+              )}
             </span>
-            <button type="button" className="btn--secondary" onClick={onSendEmailConfirmation} disabled={disabled || !settings?.email.configured}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={onSendEmailConfirmation}
+              disabled={disabled || !settings?.email.configured}
+            >
               Send Confirmation
             </button>
           </div>
         </fieldset>
 
-        <fieldset className="fieldsetSection">
+        <fieldset className={styles.fieldsetSection}>
           <legend>SMS</legend>
-          <label className="checkRow">
+          <label className={styles.checkRow}>
             <input
               type="checkbox"
               checked={smsEnabled}
@@ -152,24 +180,39 @@ export default function NotificationSettingsPanel({
             />
             Send SMS alerts
           </label>
-          <label htmlFor={`${uid}-phone`} className="srOnly">Phone number</label>
+          <label htmlFor={`${uid}-phone`} className="srOnly">
+            Phone number
+          </label>
           <input
             id={`${uid}-phone`}
             type="tel"
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
-            placeholder={settings?.phone.masked ?? "Phone number, like +14155552671"}
+            placeholder={
+              settings?.phone.masked ?? "Phone number, like +14155552671"
+            }
           />
-          <div className="actionRow">
-            <span className="pill">
-              {getStatusText(Boolean(settings?.phone.configured), smsEnabled, settings?.phone.confirmed)}
+          <div className={styles.actionRow}>
+            <span className={styles.pill}>
+              {getStatusText(
+                Boolean(settings?.phone.configured),
+                smsEnabled,
+                settings?.phone.confirmed,
+              )}
             </span>
-            <button type="button" className="btn--secondary" onClick={onSendSmsConfirmation} disabled={disabled || !settings?.phone.configured}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={onSendSmsConfirmation}
+              disabled={disabled || !settings?.phone.configured}
+            >
               Send Code
             </button>
           </div>
-          <div className="confirmRow">
-            <label htmlFor={`${uid}-sms-code`} className="srOnly">SMS confirmation code</label>
+          <div className={styles.confirmRow}>
+            <label htmlFor={`${uid}-sms-code`} className="srOnly">
+              SMS confirmation code
+            </label>
             <input
               id={`${uid}-sms-code`}
               value={smsCode}
@@ -177,17 +220,28 @@ export default function NotificationSettingsPanel({
               placeholder="SMS code"
               inputMode="numeric"
             />
-            <button type="button" onClick={handleConfirmSms} disabled={disabled || !smsCode.trim()}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={handleConfirmSms}
+              disabled={disabled || !smsCode.trim()}
+            >
               Confirm SMS
             </button>
           </div>
         </fieldset>
 
-        <button type="submit" disabled={disabled}>
+        <button
+          className={styles.primaryButton}
+          type="submit"
+          disabled={disabled}
+        >
           {saving ? "Saving..." : "Save Alert Destinations"}
         </button>
       </form>
-      <p className="helpText">Leave a destination blank to keep the saved value.</p>
+      <p className={styles.helpText}>
+        Leave a destination blank to keep the saved value.
+      </p>
     </section>
   );
 }

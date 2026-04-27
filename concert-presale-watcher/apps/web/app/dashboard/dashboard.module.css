@@ -1,0 +1,704 @@
+.dashboardPage {
+  min-height: 100svh;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 28%),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.04) 0,
+      rgba(255, 255, 255, 0.04) 1px,
+      transparent 1px,
+      transparent 120px
+    ),
+    #000;
+  color: #fff;
+  font-family: var(--font-barlow), system-ui, sans-serif;
+  font-weight: 300;
+  padding: clamp(18px, 3vw, 48px);
+}
+
+.shell {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 18px;
+}
+
+.masthead,
+.panel,
+.watchlistDrawer {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.052);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  box-shadow:
+    4px 4px 22px rgba(0, 0, 0, 0.26),
+    inset 0 1px 1px rgba(255, 255, 255, 0.14);
+}
+
+.masthead::before,
+.panel::before,
+.watchlistDrawer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.3px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.52),
+    rgba(255, 255, 255, 0.14) 24%,
+    transparent 45%,
+    transparent 60%,
+    rgba(255, 255, 255, 0.14) 82%,
+    rgba(255, 255, 255, 0.44)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.masthead {
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(22px, 4vw, 44px);
+}
+
+.mastheadTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.brand {
+  color: #fff;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.mastheadCopy {
+  max-width: 960px;
+  position: relative;
+  z-index: 1;
+}
+
+.eyebrow {
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.mastheadTitle,
+.panel h2,
+.watchlistDrawerSummary {
+  font-family: var(--font-instrument-serif), serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+.mastheadTitle {
+  margin: 18px 0 0;
+  max-width: 8.8ch;
+  font-size: clamp(72px, 10vw, 152px);
+  line-height: 0.82;
+}
+
+.mastheadCopy p:last-child {
+  max-width: 62ch;
+  margin-top: 20px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.mastheadRule {
+  margin-top: 28px;
+  border: 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.2);
+}
+
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.38fr) minmax(340px, 0.82fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.sideStack {
+  display: grid;
+  gap: 18px;
+}
+
+.panel {
+  padding: 18px;
+}
+
+.panel h2 {
+  margin: 0 0 14px;
+  font-size: clamp(30px, 3vw, 44px);
+  line-height: 0.95;
+}
+
+.statPanel {
+  min-height: 142px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.statPanel::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 48px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.18);
+}
+
+.statPanel span {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.statPanel strong {
+  color: #fff;
+  font-family: var(--font-instrument-serif), serif;
+  font-size: clamp(54px, 6vw, 86px);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 0.8;
+}
+
+.statAccent {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--stat-accent, #fff);
+  box-shadow: 0 0 28px var(--stat-accent, rgba(255, 255, 255, 0.5));
+}
+
+.list {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.listItem,
+.alertItem {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.listItem {
+  min-width: 0;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.listItem p {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.eventPanel {
+  height: 100%;
+}
+
+.eventItem {
+  align-items: flex-start;
+}
+
+.eventItemBody {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.eventItemTop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.eventArtist {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.eventTitle {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.eventMeta {
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.ticketLink {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 13px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.ticketLink:hover {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.statusBadge,
+.alertBadge,
+.channelChip,
+.pill {
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.statusBadge {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.statusBadgeOnsale,
+.alertBadgeNew,
+.alertBadgeTicket,
+.channelChipSent {
+  border-color: rgba(111, 214, 149, 0.28);
+  background: rgba(111, 214, 149, 0.11);
+  color: #a8f1bd;
+}
+
+.statusBadgeCancelled,
+.alertBadgeUrgent {
+  border-color: rgba(255, 109, 109, 0.3);
+  background: rgba(255, 109, 109, 0.1);
+  color: #ffb4b4;
+}
+
+.statusBadgePostponed,
+.statusBadgeRescheduled,
+.alertBadgeStatus {
+  border-color: rgba(255, 214, 130, 0.28);
+  background: rgba(255, 214, 130, 0.1);
+  color: #ffe0a3;
+}
+
+.alertItem {
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.alertItemTop,
+.alertItemBottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alertItemTop {
+  justify-content: space-between;
+}
+
+.alertTime {
+  color: rgba(255, 255, 255, 0.44);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.alertMessage {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.channelChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.channelChipStored {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.42);
+  font-style: italic;
+}
+
+.stack {
+  display: grid;
+  gap: 10px;
+}
+
+.fieldsetSection {
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  margin: 12px 0 0;
+  padding: 14px;
+}
+
+.fieldsetSection legend {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  padding: 0 8px;
+  text-transform: uppercase;
+}
+
+.dashboardPage input,
+.dashboardPage textarea {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  padding: 11px 12px;
+}
+
+.dashboardPage textarea {
+  min-height: 94px;
+  resize: vertical;
+}
+
+.dashboardPage input::placeholder,
+.dashboardPage textarea::placeholder {
+  color: rgba(255, 255, 255, 0.36);
+}
+
+.dashboardPage input:focus-visible,
+.dashboardPage textarea:focus-visible {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+}
+
+.inlineInputs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton,
+.logoutButton {
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 15px;
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.primaryButton,
+.logoutButton {
+  border: 1px solid #fff;
+  background: #fff;
+  color: #080808;
+}
+
+.secondaryButton {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.dangerButton {
+  border: 1px solid rgba(255, 109, 109, 0.28);
+  background: rgba(255, 109, 109, 0.1);
+  color: #ffd6d6;
+}
+
+.buttonSmall {
+  min-height: 34px;
+  padding-inline: 13px;
+}
+
+.primaryButton:hover,
+.secondaryButton:hover,
+.dangerButton:hover,
+.logoutButton:hover {
+  box-shadow: 0 0 26px rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled,
+.logoutButton:disabled {
+  cursor: wait;
+  opacity: 0.52;
+  transform: none;
+  box-shadow: none;
+}
+
+.advancedSection {
+  margin-top: 14px;
+}
+
+.advancedSection summary {
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.pollBox {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.helpText {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 10px;
+}
+
+.checkRow {
+  color: rgba(255, 255, 255, 0.66);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.checkRow input {
+  accent-color: #fff;
+  border-radius: 4px;
+  height: 16px;
+  min-height: auto;
+  padding: 0;
+  width: auto;
+}
+
+.actionRow,
+.confirmRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.confirmRow input {
+  min-width: 0;
+  flex: 1;
+}
+
+.pill {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.watchlistDrawer {
+  padding: 0;
+}
+
+.watchlistDrawerSummary {
+  align-items: center;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  font-size: clamp(30px, 3vw, 44px);
+  justify-content: space-between;
+  line-height: 0.95;
+  list-style: none;
+  padding: 18px;
+}
+
+.watchlistDrawerSummary::marker,
+.watchlistDrawerSummary::-webkit-details-marker {
+  display: none;
+}
+
+.watchlistDrawerSummary::after {
+  content: "+";
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-barlow), system-ui, sans-serif;
+  font-style: normal;
+  margin-left: 12px;
+}
+
+.watchlistDrawer[open] .watchlistDrawerSummary::after {
+  content: "-";
+}
+
+.drawerCount {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.58);
+  font-family: var(--font-barlow), system-ui, sans-serif;
+  font-size: 13px;
+  font-style: normal;
+  margin-left: auto;
+  padding: 3px 10px;
+}
+
+.watchlistGrid {
+  padding: 0 18px 18px;
+}
+
+.spotifyId {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.emptyState {
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  color: rgba(255, 255, 255, 0.5);
+  display: grid;
+  gap: 6px;
+  padding: 28px 16px;
+  text-align: center;
+}
+
+.emptyStateTitle {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.emptyStateHint {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 auto;
+  max-width: 320px;
+}
+
+.skeleton {
+  animation: shimmer 1.5s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.skeletonRow {
+  min-height: 58px;
+}
+
+.skeletonNumber {
+  border-radius: 12px;
+  height: clamp(44px, 5vw, 68px);
+  width: 72px;
+}
+
+.errorBanner {
+  border: 1px solid rgba(255, 109, 109, 0.38);
+  border-radius: 18px;
+  background: rgba(255, 109, 109, 0.1);
+  color: rgba(255, 214, 214, 0.92);
+  padding: 12px 14px;
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+@media (max-width: 980px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statsRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboardPage {
+    padding: 14px;
+  }
+
+  .masthead {
+    min-height: 300px;
+  }
+
+  .mastheadTop,
+  .actionRow,
+  .confirmRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inlineInputs {
+    grid-template-columns: 1fr;
+  }
+
+  .ticketLink {
+    width: 100%;
+  }
+
+  .eventItem,
+  .listItem {
+    flex-direction: column;
+  }
+}

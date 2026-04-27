@@ -1,3 +1,6 @@
+import type { CSSProperties } from "react";
+import styles from "../dashboard/dashboard.module.css";
+
 interface StatCardProps {
   label: string;
   value: number;
@@ -5,15 +8,26 @@ interface StatCardProps {
   accent?: string;
 }
 
-export default function StatCard({ label, value, loading, accent }: StatCardProps) {
+export default function StatCard({
+  label,
+  value,
+  loading,
+  accent,
+}: StatCardProps) {
   return (
     <article
-      className="panel statPanel"
-      style={accent ? { borderLeft: `3px solid ${accent}` } : undefined}
+      className={`${styles.panel} ${styles.statPanel}`}
+      style={
+        accent ? ({ "--stat-accent": accent } as CSSProperties) : undefined
+      }
     >
+      <i className={styles.statAccent} aria-hidden="true" />
       <span>{label}</span>
       {loading ? (
-        <div className="skeleton skeleton--number" aria-hidden="true" />
+        <div
+          className={`${styles.skeleton} ${styles.skeletonNumber}`}
+          aria-hidden="true"
+        />
       ) : (
         <strong>{value}</strong>
       )}

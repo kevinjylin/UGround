@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { FormEvent, Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import AuthFrame from "../components/AuthFrame";
 import ErrorBanner from "../components/ErrorBanner";
+import styles from "../auth.module.css";
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -62,10 +64,10 @@ function ResetPasswordForm() {
   if (complete) {
     return (
       <>
-        <div className="successBanner" role="status" aria-live="polite">
+        <div className={styles.successBanner} role="status" aria-live="polite">
           Your password has been reset.
         </div>
-        <Link href="/login" className="authPrimaryLink">
+        <Link href="/login" className={styles.primaryLink}>
           Sign in
         </Link>
       </>
@@ -74,11 +76,12 @@ function ResetPasswordForm() {
 
   return (
     <>
-      <form className="stack" onSubmit={submit}>
+      <form className={styles.stack} onSubmit={submit}>
         <label htmlFor="reset-password" className="srOnly">
           New password
         </label>
         <input
+          className={styles.field}
           id="reset-password"
           type="password"
           autoComplete="new-password"
@@ -94,6 +97,7 @@ function ResetPasswordForm() {
           Confirm password
         </label>
         <input
+          className={styles.field}
           id="reset-confirm-password"
           type="password"
           autoComplete="new-password"
@@ -104,36 +108,38 @@ function ResetPasswordForm() {
           disabled={!token}
           required
         />
-        <button type="submit" disabled={busy || !token}>
+        <button
+          className={styles.primaryButton}
+          type="submit"
+          disabled={busy || !token}
+        >
           {busy ? "Resetting..." : "Reset password"}
         </button>
       </form>
 
-      {error ? <ErrorBanner message={error} /> : null}
+      {error ? (
+        <ErrorBanner message={error} className={styles.errorBanner} />
+      ) : null}
     </>
   );
 }
 
 export default function ResetPasswordPage() {
   return (
-    <main className="authShell">
-      <section className="authPanel">
-        <div>
-          <Link href="/" className="wordmark authWordmark">
-            UGround
-          </Link>
-          <p className="authKicker">New password</p>
-          <h1>Choose a new password.</h1>
-        </div>
+    <AuthFrame
+      kicker="New password"
+      title="Choose a new password."
+      lead="Finish the reset and sign in again when the link checks out."
+    >
+      <Suspense
+        fallback={<p className={styles.helpText}>Loading reset link...</p>}
+      >
+        <ResetPasswordForm />
+      </Suspense>
 
-        <Suspense fallback={<p className="helpText">Loading reset link...</p>}>
-          <ResetPasswordForm />
-        </Suspense>
-
-        <p className="authFootnote">
-          Back to <Link href="/login">sign in</Link>
-        </p>
-      </section>
-    </main>
+      <p className={styles.footnote}>
+        Back to <Link href="/login">sign in</Link>
+      </p>
+    </AuthFrame>
   );
 }

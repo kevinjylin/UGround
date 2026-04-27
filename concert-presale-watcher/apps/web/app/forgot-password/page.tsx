@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import AuthFrame from "../components/AuthFrame";
 import ErrorBanner from "../components/ErrorBanner";
+import styles from "../auth.module.css";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -36,48 +38,49 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <main className="authShell">
-      <section className="authPanel">
-        <div>
-          <Link href="/" className="wordmark authWordmark">
-            UGround
-          </Link>
-          <p className="authKicker">Password reset</p>
-          <h1>Get back into your account.</h1>
+    <AuthFrame
+      kicker="Password reset"
+      title="Get back into your account."
+      lead="Send yourself a reset link and return to your watchlist."
+    >
+      {submitted ? (
+        <div className={styles.successBanner} role="status" aria-live="polite">
+          If an account with that email exists, a reset link has been sent.
+          Check your inbox and spam folder.
         </div>
+      ) : (
+        <form className={styles.stack} onSubmit={submit}>
+          <label htmlFor="forgot-email" className="srOnly">
+            Email
+          </label>
+          <input
+            className={styles.field}
+            id="forgot-email"
+            type="email"
+            autoComplete="email"
+            autoFocus
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="Email"
+            required
+          />
+          <button
+            className={styles.primaryButton}
+            type="submit"
+            disabled={busy}
+          >
+            {busy ? "Sending..." : "Send reset link"}
+          </button>
+        </form>
+      )}
 
-        {submitted ? (
-          <div className="successBanner" role="status" aria-live="polite">
-            If an account with that email exists, a reset link has been sent.
-            Check your inbox and spam folder.
-          </div>
-        ) : (
-          <form className="stack" onSubmit={submit}>
-            <label htmlFor="forgot-email" className="srOnly">
-              Email
-            </label>
-            <input
-              id="forgot-email"
-              type="email"
-              autoComplete="email"
-              autoFocus
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="Email"
-              required
-            />
-            <button type="submit" disabled={busy}>
-              {busy ? "Sending..." : "Send reset link"}
-            </button>
-          </form>
-        )}
+      {error ? (
+        <ErrorBanner message={error} className={styles.errorBanner} />
+      ) : null}
 
-        {error ? <ErrorBanner message={error} /> : null}
-
-        <p className="authFootnote">
-          Remembered it? <Link href="/login">Sign in</Link>
-        </p>
-      </section>
-    </main>
+      <p className={styles.footnote}>
+        Remembered it? <Link href="/login">Sign in</Link>
+      </p>
+    </AuthFrame>
   );
 }

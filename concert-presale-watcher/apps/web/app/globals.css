@@ -447,6 +447,12 @@ body:has(#studio-landing) {
   background: #000;
 }
 
+body:has(#auth-flow),
+body:has(#studio-dashboard) {
+  padding: 0;
+  background: #000;
+}
+
 .loginShell {
   min-height: 100vh;
   display: grid;

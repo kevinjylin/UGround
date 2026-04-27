@@ -4,7 +4,9 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import AuthFrame from "../components/AuthFrame";
 import ErrorBanner from "../components/ErrorBanner";
+import styles from "../auth.module.css";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -54,58 +56,59 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="loginShell">
-      <section className="loginPanel">
-        <span className="wordmark">UGround</span>
-        <h1>Sign In</h1>
-        <p className="helpText">
-          Use email, username, or continue with Google.
-        </p>
-        <form className="stack" onSubmit={submit}>
-          <label htmlFor="login-identifier" className="srOnly">
-            Email or username
-          </label>
-          <input
-            id="login-identifier"
-            type="text"
-            autoComplete="username"
-            autoFocus
-            value={identifier}
-            onChange={(event) => setIdentifier(event.target.value)}
-            placeholder="Email or username"
-            required
-          />
-          <label htmlFor="login-password" className="srOnly">
-            Password
-          </label>
-          <input
-            id="login-password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Password"
-            required
-          />
-          <div className="authInlineLinks">
-            <Link href="/forgot-password">Forgot password?</Link>
-          </div>
-          <button type="submit" disabled={busy}>
-            {busy ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
-        <button
-          type="button"
-          className="btn--external"
-          onClick={() => void signInWithGoogle()}
-          disabled={googleBusy}
-        >
-          {googleBusy ? "Redirecting..." : "Continue with Google"}
+    <AuthFrame
+      kicker="Sign in"
+      title="Welcome back."
+      lead="Use email, username, or continue with Google."
+    >
+      <form className={styles.stack} onSubmit={submit}>
+        <label htmlFor="login-identifier" className="srOnly">
+          Email or username
+        </label>
+        <input
+          className={styles.field}
+          id="login-identifier"
+          type="text"
+          autoComplete="username"
+          autoFocus
+          value={identifier}
+          onChange={(event) => setIdentifier(event.target.value)}
+          placeholder="Email or username"
+          required
+        />
+        <label htmlFor="login-password" className="srOnly">
+          Password
+        </label>
+        <input
+          className={styles.field}
+          id="login-password"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="Password"
+          required
+        />
+        <div className={styles.inlineLinks}>
+          <Link href="/forgot-password">Forgot password?</Link>
+        </div>
+        <button className={styles.primaryButton} type="submit" disabled={busy}>
+          {busy ? "Signing in..." : "Sign In"}
         </button>
-        {error ? <ErrorBanner message={error} /> : null}
-        <p className="authFootnote">
-          New here? <Link href="/signup">Create an account</Link>
-        </p>
-      </section>
-    </main>
+      </form>
+      <button
+        type="button"
+        className={styles.secondaryButton}
+        onClick={() => void signInWithGoogle()}
+        disabled={googleBusy}
+      >
+        {googleBusy ? "Redirecting..." : "Continue with Google"}
+      </button>
+      {error ? (
+        <ErrorBanner message={error} className={styles.errorBanner} />
+      ) : null}
+      <p className={styles.footnote}>
+        New here? <Link href="/signup">Create an account</Link>
+      </p>
+    </AuthFrame>
   );
 }

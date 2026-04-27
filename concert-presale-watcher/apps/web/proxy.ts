@@ -8,6 +8,8 @@ const publicPaths = new Set([
   "/",
   "/login",
   "/signup",
+  "/forgot-password",
+  "/reset-password",
   "/api/health",
   "/api/signup",
 ]);

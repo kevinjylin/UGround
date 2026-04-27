@@ -1,5 +1,6 @@
 import { FormEvent, useId, useState } from "react";
 import type { PollResult } from "../../lib/types";
+import styles from "../dashboard/dashboard.module.css";
 
 const shortDate = (value: string | null): string => {
   if (!value) return "Unknown";
@@ -57,13 +58,15 @@ export default function WatchlistPanel({
   };
 
   return (
-    <article className="panel">
+    <article className={styles.panel}>
       <h2>Follow Artist</h2>
 
-      <fieldset className="fieldsetSection">
+      <fieldset className={styles.fieldsetSection}>
         <legend>Add Artist</legend>
-        <form className="stack" onSubmit={handleAddArtist}>
-          <label htmlFor={`${uid}-artist`} className="srOnly">Artist name</label>
+        <form className={styles.stack} onSubmit={handleAddArtist}>
+          <label htmlFor={`${uid}-artist`} className="srOnly">
+            Artist name
+          </label>
           <input
             id={`${uid}-artist`}
             value={artistName}
@@ -71,9 +74,11 @@ export default function WatchlistPanel({
             placeholder="Artist name"
             required
           />
-          <div className="inlineInputs">
+          <div className={styles.inlineInputs}>
             <div>
-              <label htmlFor={`${uid}-city`} className="srOnly">City</label>
+              <label htmlFor={`${uid}-city`} className="srOnly">
+                City
+              </label>
               <input
                 id={`${uid}-city`}
                 value={city}
@@ -82,7 +87,9 @@ export default function WatchlistPanel({
               />
             </div>
             <div>
-              <label htmlFor={`${uid}-state`} className="srOnly">State</label>
+              <label htmlFor={`${uid}-state`} className="srOnly">
+                State
+              </label>
               <input
                 id={`${uid}-state`}
                 value={stateRegion}
@@ -91,7 +98,9 @@ export default function WatchlistPanel({
               />
             </div>
             <div>
-              <label htmlFor={`${uid}-country`} className="srOnly">Country</label>
+              <label htmlFor={`${uid}-country`} className="srOnly">
+                Country
+              </label>
               <input
                 id={`${uid}-country`}
                 value={country}
@@ -100,14 +109,22 @@ export default function WatchlistPanel({
               />
             </div>
           </div>
-          <button type="submit" disabled={busy}>Add to Watchlist</button>
+          <button
+            className={styles.primaryButton}
+            type="submit"
+            disabled={busy}
+          >
+            Add to Watchlist
+          </button>
         </form>
       </fieldset>
 
-      <fieldset className="fieldsetSection">
+      <fieldset className={styles.fieldsetSection}>
         <legend>Spotify Import</legend>
-        <form className="stack" onSubmit={handleImport}>
-          <label htmlFor={`${uid}-spotify`} className="srOnly">Spotify artist IDs</label>
+        <form className={styles.stack} onSubmit={handleImport}>
+          <label htmlFor={`${uid}-spotify`} className="srOnly">
+            Spotify artist IDs
+          </label>
           <textarea
             id={`${uid}-spotify`}
             value={spotifyIds}
@@ -115,28 +132,42 @@ export default function WatchlistPanel({
             placeholder="Paste Spotify artist IDs (comma or newline separated)"
             rows={3}
           />
-          <button type="submit" disabled={busy}>Import from Spotify</button>
+          <button
+            className={styles.secondaryButton}
+            type="submit"
+            disabled={busy}
+          >
+            Import from Spotify
+          </button>
         </form>
       </fieldset>
 
-      <details className="advancedSection">
+      <details className={styles.advancedSection}>
         <summary>Advanced</summary>
-        <div className="pollBox">
-          <label htmlFor={`${uid}-secret`} className="srOnly">Poll secret</label>
+        <div className={styles.pollBox}>
+          <label htmlFor={`${uid}-secret`} className="srOnly">
+            Poll secret
+          </label>
           <input
             id={`${uid}-secret`}
             value={pollSecret}
             onChange={(e) => setPollSecret(e.target.value)}
             placeholder="Poll secret (only if configured)"
           />
-          <button type="button" onClick={handlePoll} disabled={polling}>
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={handlePoll}
+            disabled={polling}
+          >
             {polling ? "Polling..." : "Run Poll Now"}
           </button>
         </div>
         {lastPoll ? (
-          <p className="helpText">
-            Last poll: {lastPoll.dedupedEvents} deduped events, {lastPoll.alertsCreated} alerts,
-            ended at {shortDate(lastPoll.endedAt)}.
+          <p className={styles.helpText}>
+            Last poll: {lastPoll.dedupedEvents} deduped events,{" "}
+            {lastPoll.alertsCreated} alerts, ended at{" "}
+            {shortDate(lastPoll.endedAt)}.
           </p>
         ) : null}
       </details>

@@ -1,4 +1,5 @@
 import type { WatchArtist } from "../../lib/types";
+import styles from "../dashboard/dashboard.module.css";
 
 const formatWatchLocation = (artist: WatchArtist): string => {
   const city = artist.city?.trim() || "";
@@ -17,25 +18,35 @@ interface WatchlistListProps {
   loading?: boolean;
 }
 
-export default function WatchlistList({ artists, onRemove, loading }: WatchlistListProps) {
+export default function WatchlistList({
+  artists,
+  onRemove,
+  loading,
+}: WatchlistListProps) {
   return (
-    <ul className="list watchlistGrid">
+    <ul className={`${styles.list} ${styles.watchlistGrid}`}>
       {loading
         ? Array.from({ length: 4 }, (_, i) => (
-            <li key={i} className="listItem skeleton skeleton--row" aria-hidden="true" />
+            <li
+              key={i}
+              className={`${styles.listItem} ${styles.skeleton} ${styles.skeletonRow}`}
+              aria-hidden="true"
+            />
           ))
         : artists.map((artist) => (
-            <li key={artist.id} className="listItem">
+            <li key={artist.id} className={styles.listItem}>
               <div>
                 <strong>{artist.name}</strong>
                 <p>{formatWatchLocation(artist)}</p>
                 {artist.spotify_id ? (
-                  <p className="spotifyId">Spotify · {artist.spotify_id}</p>
+                  <p className={styles.spotifyId}>
+                    Spotify · {artist.spotify_id}
+                  </p>
                 ) : null}
               </div>
               <button
                 type="button"
-                className="btn--danger"
+                className={styles.dangerButton}
                 onClick={() => void onRemove(artist.id)}
                 aria-label={`Remove ${artist.name}`}
               >
@@ -44,7 +55,7 @@ export default function WatchlistList({ artists, onRemove, loading }: WatchlistL
             </li>
           ))}
       {!loading && artists.length === 0 ? (
-        <li className="emptyState">
+        <li className={styles.emptyState}>
           No artists followed yet. Add artists using the form above.
         </li>
       ) : null}

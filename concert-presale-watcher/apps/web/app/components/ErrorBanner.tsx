@@ -1,10 +1,15 @@
 interface ErrorBannerProps {
   message: string;
+  className?: string;
 }
 
-export default function ErrorBanner({ message }: ErrorBannerProps) {
+export default function ErrorBanner({ message, className }: ErrorBannerProps) {
   return (
-    <p className="errorBanner" role="alert" aria-live="assertive">
+    <p
+      className={className ?? "errorBanner"}
+      role="alert"
+      aria-live="assertive"
+    >
       {message}
     </p>
   );
