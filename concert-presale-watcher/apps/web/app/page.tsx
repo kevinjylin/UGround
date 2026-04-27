@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 import styles from "./landing.module.css";
 
-// ── Video / asset URLs ──────────────────────────────────────────────────────
+// ── Asset URLs ──────────────────────────────────────────────────────────────
 const HERO_VIDEO =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260307_083826_e938b29f-a43a-41ec-a153-3d4730578ab8.mp4";
 const PROCESS_HLS =
@@ -13,12 +14,8 @@ const STATS_HLS =
   "https://stream.mux.com/NcU3HlHeF7CUL86azTTzpy3Tlb00d6iF3BmCdFslMJYM.m3u8";
 const CTA_HLS =
   "https://stream.mux.com/8wrHPCX2dC3msyYU9ObwqNdm00u3ViXvOSHUMRYSEe5Q.m3u8";
-const FEATURE_GIF_1 =
-  "https://motionsites.ai/assets/hero-finlytic-preview-CV9g0FHP.gif";
-const FEATURE_GIF_2 =
-  "https://motionsites.ai/assets/hero-wealth-preview-B70idl_u.gif";
 
-const PARTNERS = ["Stripe", "Vercel", "Linear", "Notion", "Figma"];
+const SOURCES = ["Ticketmaster", "Eventbrite", "Songkick", "Bandsintown", "AXS", "DICE"];
 
 // ── Icons ───────────────────────────────────────────────────────────────────
 function ArrowUpRight({ size = 14, stroke = 1.5 }: { size?: number; stroke?: number }) {
@@ -43,36 +40,38 @@ function ZapIcon({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
-function PaletteIcon({ size = 18 }: { size?: number }) {
+function RadarIcon({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="13.5" cy="6.5" r="0.8" fill="currentColor" />
-      <circle cx="17.5" cy="10.5" r="0.8" fill="currentColor" />
-      <circle cx="8.5" cy="7.5" r="0.8" fill="currentColor" />
-      <circle cx="6.5" cy="12.5" r="0.8" fill="currentColor" />
-      <path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 10 10c0 2.5-2.5 3-3 3h-3a2 2 0 0 0-2 2c0 1 1 1.5 1 2.5 0 1.5-1.5 2.5-3 2.5z" />
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" fill="currentColor" />
+      <line x1="12" y1="12" x2="20" y2="6" />
     </svg>
   );
 }
-function BarChartIcon({ size = 18 }: { size?: number }) {
+function BellIcon({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="6" y1="20" x2="6" y2="14" />
-      <line x1="12" y1="20" x2="12" y2="8" />
-      <line x1="18" y1="20" x2="18" y2="11" />
-      <line x1="3" y1="20" x2="21" y2="20" />
+      <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16l-2-2z" />
+      <path d="M10 21a2 2 0 0 0 4 0" />
     </svg>
   );
 }
-function ShieldIcon({ size = 18 }: { size?: number }) {
+function ListIcon({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <circle cx="4" cy="6" r="1.2" fill="currentColor" />
+      <circle cx="4" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="4" cy="18" r="1.2" fill="currentColor" />
     </svg>
   );
 }
 
-// ── Animation components ────────────────────────────────────────────────────
+// ── Animation primitives ────────────────────────────────────────────────────
 interface BlurTextProps {
   text: string;
   delay?: number;
@@ -234,8 +233,206 @@ function HlsVideo({
   );
 }
 
+// ── Watchlist mockup (Coverage feature) ─────────────────────────────────────
+function WatchlistMock() {
+  const rows = [
+    { artist: "Geese", venue: "Bowery Ballroom · NYC", status: "WATCHING", tone: "ok" as const },
+    { artist: "MJ Lenderman", venue: "The Echo · Los Angeles", status: "ON SALE", tone: "live" as const },
+    { artist: "Wednesday", venue: "Lincoln Hall · Chicago", status: "PRESALE FRI", tone: "warn" as const },
+    { artist: "Hotline TNT", venue: "Empty Bottle · Chicago", status: "WATCHING", tone: "ok" as const },
+    { artist: "Slow Pulp", venue: "9:30 Club · DC", status: "+2 DATES", tone: "new" as const },
+  ];
+  const tones: Record<string, string> = {
+    ok: "rgba(255,255,255,0.55)",
+    live: "#65d28b",
+    warn: "#f5b46a",
+    new: "#9bb8ff",
+  };
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        padding: 20,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        background:
+          "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,0.06), transparent 60%), #0a0a0b",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 6,
+        }}
+      >
+        <div className={styles.eyebrow} style={{ fontSize: 9 }}>
+          YOUR WATCHLIST
+        </div>
+        <div className={styles.tiny} style={{ color: "rgba(255,255,255,0.4)" }}>
+          5 ARTISTS · 12 CITIES
+        </div>
+      </div>
+      {rows.map((r) => (
+        <div
+          key={r.artist}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "10px 14px",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 12,
+            background: "rgba(255,255,255,0.03)",
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className={styles.fontHeading} style={{ fontSize: 18, lineHeight: 1 }}>
+              {r.artist}
+            </div>
+            <div className={styles.tiny} style={{ marginTop: 4, color: "rgba(255,255,255,0.55)" }}>
+              {r.venue}
+            </div>
+          </div>
+          <div
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.16em",
+              color: tones[r.tone],
+              padding: "4px 8px",
+              borderRadius: 999,
+              border: `1px solid ${tones[r.tone]}33`,
+              background: `${tones[r.tone]}10`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {r.status}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Alert feed mockup (Detection feature) ───────────────────────────────────
+function AlertFeedMock() {
+  const items = [
+    {
+      kind: "STATUS FLIP",
+      tone: "#f5b46a",
+      artist: "MJ Lenderman",
+      where: "The Echo · Los Angeles",
+      time: "12 sec ago",
+      detail: "Ticketmaster moved to ON SALE",
+    },
+    {
+      kind: "NEW DATE",
+      tone: "#9bb8ff",
+      artist: "Slow Pulp",
+      where: "9:30 Club · Washington DC",
+      time: "4 min ago",
+      detail: "Songkick listed 2 added shows in your radius",
+    },
+    {
+      kind: "PRESALE OPEN",
+      tone: "#65d28b",
+      artist: "Wednesday",
+      where: "Lincoln Hall · Chicago",
+      time: "2 hr ago",
+      detail: "Code MAGNOLIA accepted on AXS",
+    },
+  ];
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        padding: 20,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        background:
+          "radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,0.06), transparent 60%), #0a0a0b",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 4,
+        }}
+      >
+        <div className={styles.eyebrow} style={{ fontSize: 9 }}>
+          LIVE FEED
+        </div>
+        <div
+          className={styles.tiny}
+          style={{ display: "flex", alignItems: "center", gap: 6, color: "rgba(255,255,255,0.4)" }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 999,
+              background: "#65d28b",
+              display: "inline-block",
+            }}
+          />
+          POLLING · EVERY 60s
+        </div>
+      </div>
+      {items.map((it) => (
+        <div
+          key={it.artist}
+          style={{
+            padding: "12px 14px",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 14,
+            background: "rgba(255,255,255,0.03)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div
+              style={{
+                fontSize: 9,
+                letterSpacing: "0.18em",
+                color: it.tone,
+              }}
+            >
+              {it.kind}
+            </div>
+            <div className={styles.tiny} style={{ color: "rgba(255,255,255,0.4)" }}>
+              {it.time}
+            </div>
+          </div>
+          <div className={styles.fontHeading} style={{ fontSize: 20, lineHeight: 1, marginTop: 6 }}>
+            {it.artist}
+          </div>
+          <div className={styles.tiny} style={{ color: "rgba(255,255,255,0.55)", marginTop: 4 }}>
+            {it.where}
+          </div>
+          <div className={styles.body} style={{ fontSize: 12, marginTop: 8 }}>
+            {it.detail}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Masthead ────────────────────────────────────────────────────────────────
 function Masthead() {
+  const links: Array<[string, string]> = [
+    ["Home", "#"],
+    ["How", "#how"],
+    ["Sources", "#sources"],
+    ["Numbers", "#numbers"],
+  ];
   return (
     <header
       style={{ position: "fixed", top: 16, left: 0, right: 0, zIndex: 50, padding: "0 32px" }}
@@ -250,7 +447,8 @@ function Masthead() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div
+            <Link
+              href="/"
               className={styles.liquidGlass}
               style={{
                 width: 44,
@@ -259,12 +457,14 @@ function Masthead() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                textDecoration: "none",
               }}
+              aria-label="UGround"
             >
               <span className={styles.fontHeading} style={{ fontSize: 22, lineHeight: 1, color: "#fff" }}>
-                S
+                U
               </span>
-            </div>
+            </Link>
           </div>
 
           <nav
@@ -277,10 +477,10 @@ function Masthead() {
               gap: 2,
             }}
           >
-            {["Home", "Services", "Work", "Process", "Pricing"].map((l) => (
+            {links.map(([label, href]) => (
               <a
-                key={l}
-                href={`#${l.toLowerCase()}`}
+                key={label}
+                href={href}
                 style={{
                   padding: "8px 14px",
                   fontSize: 13,
@@ -289,16 +489,28 @@ function Masthead() {
                   fontWeight: 400,
                 }}
               >
-                {l}
+                {label}
               </a>
             ))}
-            <a
-              href="#start"
+            <Link
+              href="/login"
+              style={{
+                padding: "8px 14px",
+                fontSize: 13,
+                color: "rgba(255,255,255,0.7)",
+                textDecoration: "none",
+                fontWeight: 400,
+              }}
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/signup"
               className={styles.btnWhite}
               style={{ marginLeft: 6, padding: "6px 14px", fontSize: 12 }}
             >
-              Get Started <ArrowUpRight size={12} />
-            </a>
+              Start watching <ArrowUpRight size={12} />
+            </Link>
           </nav>
 
           <div style={{ width: 44 }} />
@@ -325,7 +537,7 @@ function Hero() {
         className={styles.dimOverlay}
         style={{
           background:
-            "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.35) 40%, rgba(0,0,0,0.85) 100%)",
+            "linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.4) 40%, rgba(0,0,0,0.85) 100%)",
         }}
       />
       <div className={styles.fadeBottomTall} />
@@ -344,18 +556,18 @@ function Hero() {
           }}
         >
           <div>
-            <div className={styles.eyebrow}>VOL. 04 · ISSUE 12 · APRIL 2026</div>
+            <div className={styles.eyebrow}>VOL. 04 · ISSUE 12 · TOUR SEASON 2026</div>
             <div
               className={styles.fontHeading}
               style={{ fontSize: "clamp(40px, 5vw, 64px)", lineHeight: 0.9, marginTop: 4 }}
             >
-              The Studio Index
+              UGround
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div className={styles.eyebrow}>$0.00 · WEB EDITION</div>
+            <div className={styles.eyebrow}>$0.00 · FAN EDITION</div>
             <div className={styles.fontHeading} style={{ fontSize: 22, lineHeight: 1, marginTop: 6 }}>
-              &ldquo;Design, wildly reimagined.&rdquo;
+              &ldquo;Tickets, before the feed wakes up.&rdquo;
             </div>
           </div>
         </div>
@@ -382,12 +594,12 @@ function Hero() {
                     >
                       New
                     </span>
-                    <span style={{ fontSize: 12 }}>Introducing AI-powered web design.</span>
+                    <span style={{ fontSize: 12 }}>Watchlist-powered presale alerts.</span>
                   </div>
                 </div>
               </BlurIn>
               <BlurText
-                text="The Website Your Brand Deserves"
+                text="Catch the show before the feed wakes up."
                 delay={90}
                 as="h1"
                 className={styles.hMega}
@@ -396,10 +608,10 @@ function Hero() {
               <BlurIn delay={0.6}>
                 <p
                   className={styles.lead}
-                  style={{ maxWidth: 520, marginTop: 28, color: "rgba(255,255,255,0.85)" }}
+                  style={{ maxWidth: 540, marginTop: 28, color: "rgba(255,255,255,0.85)" }}
                 >
-                  Stunning design. Blazing performance. Built by AI, refined by experts. This is web
-                  design, wildly reimagined.
+                  Follow the artists, venues, and cities you actually care about. UGround watches
+                  public ticket sources and pings you the second something moves.
                 </p>
               </BlurIn>
             </div>
@@ -413,14 +625,14 @@ function Hero() {
                   flexWrap: "wrap",
                 }}
               >
-                <a
-                  href="#start"
+                <Link
+                  href="/signup"
                   className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
                   style={{ borderRadius: 999, padding: "12px 22px", fontSize: 14 }}
                 >
-                  Get Started <ArrowUpRight size={14} />
-                </a>
-                <button className={styles.btnText}>
+                  Start watching <ArrowUpRight size={14} />
+                </Link>
+                <a href="#how" className={styles.btnText}>
                   <span
                     className={styles.liquidGlass}
                     style={{
@@ -434,13 +646,13 @@ function Hero() {
                   >
                     <PlayIcon size={10} />
                   </span>
-                  Watch the Film
-                </button>
+                  See how it works
+                </a>
               </div>
             </BlurIn>
           </div>
 
-          {/* Right: video portrait card */}
+          {/* Right: live wire portrait card */}
           <BlurIn delay={0.3}>
             <div
               className={styles.liquidGlass}
@@ -452,19 +664,17 @@ function Hero() {
                 position: "relative",
               }}
             >
-              <video
-                autoPlay
-                loop
-                muted
-                playsInline
-                src={HERO_VIDEO}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/concert-crowd.jpg"
+                alt="A packed concert crowd under red stage lights"
                 style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               />
               <div
                 style={{
                   position: "absolute",
                   inset: 0,
-                  background: "linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.6) 100%)",
+                  background: "linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.75) 100%)",
                 }}
               />
               <div
@@ -483,7 +693,7 @@ function Hero() {
                     COVER · 04.12
                   </div>
                   <div className={styles.fontHeading} style={{ fontSize: 22, lineHeight: 1 }}>
-                    Studio at work
+                    Tonight&rsquo;s wire
                   </div>
                 </div>
                 <div
@@ -504,12 +714,13 @@ function Hero() {
               FROM THE EDITOR
             </div>
             <div className={styles.fontHeading} style={{ fontSize: 22, lineHeight: 1.05 }}>
-              An issue about <span className={styles.hl}>making things, fast.</span>
+              An issue about <span className={styles.hl}>moving first.</span>
             </div>
           </div>
           <div className={styles.body}>
-            Five years ago a website took a quarter to ship. Today it takes a week. We built the
-            studio that makes that possible — and built it for the brands who refuse to wait.
+            The good shows still sell out before the algorithm tells you they exist. UGround watches
+            the venues you care about, the artists on your shortlist, and the cities you live in —
+            and pings you the second a date drops, a status flips, or a presale cracks open.
           </div>
           <div>
             <div className={styles.eyebrow} style={{ marginBottom: 6 }}>
@@ -526,11 +737,11 @@ function Hero() {
               }}
             >
               {[
-                ["I", "The Process", "02"],
-                ["II", "Capabilities", "04"],
+                ["I", "How It Works", "02"],
+                ["II", "Coverage", "04"],
                 ["III", "By the Numbers", "07"],
-                ["IV", "Letters", "09"],
-                ["V", "Begin", "11"],
+                ["IV", "Field Reports", "09"],
+                ["V", "Start Watching", "11"],
               ].map(([num, title, page]) => (
                 <li
                   key={num}
@@ -550,7 +761,7 @@ function Hero() {
           </div>
         </div>
 
-        {/* Trust marquee */}
+        {/* Sources marquee */}
         <div
           style={{
             marginTop: 56,
@@ -560,7 +771,7 @@ function Hero() {
           }}
         >
           <div className={styles.eyebrow} style={{ marginBottom: 16 }}>
-            TRUSTED BY THE TEAMS BEHIND
+            WATCHING THE SOURCES YOU ALREADY USE
           </div>
           <div
             style={{
@@ -570,7 +781,7 @@ function Hero() {
             }}
           >
             <div className={styles.marquee}>
-              {[...PARTNERS, ...PARTNERS, ...PARTNERS].map((p, i) => (
+              {[...SOURCES, ...SOURCES, ...SOURCES].map((p, i) => (
                 <span
                   key={i}
                   className={styles.fontHeading}
@@ -592,12 +803,12 @@ function Hero() {
   );
 }
 
-// ── Process ─────────────────────────────────────────────────────────────────
+// ── Process — How It Works ──────────────────────────────────────────────────
 function ProcessSection() {
   return (
-    <section id="start" style={{ position: "relative", overflow: "hidden", padding: "140px 0" }}>
+    <section id="how" style={{ position: "relative", overflow: "hidden", padding: "140px 0" }}>
       <HlsVideo src={PROCESS_HLS} />
-      <div className={styles.dimOverlay} style={{ background: "rgba(0,0,0,0.55)" }} />
+      <div className={styles.dimOverlay} style={{ background: "rgba(0,0,0,0.6)" }} />
       <div className={styles.fadeTop} />
       <div className={styles.fadeBottom} />
 
@@ -621,7 +832,7 @@ function ProcessSection() {
         </div>
 
         <BlurText
-          text="You dream it. We ship it."
+          text="You follow. We watch. You go."
           className={styles.hSection}
           as="h2"
           style={{ maxWidth: 900, marginBottom: 24 }}
@@ -629,17 +840,17 @@ function ProcessSection() {
         />
         <BlurIn delay={0.3}>
           <p className={styles.lead} style={{ maxWidth: 620, marginBottom: 36 }}>
-            Share your vision. Our AI handles the rest — wireframes, design, code, launch. All in
-            days, not quarters.
+            Tell UGround which artists and venues matter. We poll the public sources every minute
+            and surface the changes that actually mean a ticket — nothing else.
           </p>
         </BlurIn>
 
         <div className={styles.processGrid}>
           {[
-            ["01", "Brief", "Share your vision in a 30-minute call."],
-            ["02", "Wireframe", "AI sketches the bones within hours."],
-            ["03", "Build", "Designed. Coded. Refined by experts."],
-            ["04", "Launch", "Live in days, not quarters."],
+            ["01", "Follow", "Add artists, venues, and cities to your watchlist in seconds."],
+            ["02", "Watch", "We poll Ticketmaster, Eventbrite, AXS, DICE & more — every minute."],
+            ["03", "Detect", "Status flips, new dates, earlier presales — surfaced the moment they appear."],
+            ["04", "Notify", "Email, Discord, SMS — your fastest channel wins. We don't sit on a flip."],
           ].map(([n, t, d], i, arr) => (
             <div
               key={n}
@@ -664,23 +875,23 @@ function ProcessSection() {
         </div>
 
         <div style={{ marginTop: 40 }}>
-          <a
-            href="#cta"
+          <Link
+            href="/signup"
             className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
             style={{ borderRadius: 999, padding: "14px 24px", fontSize: 14 }}
           >
-            Get Started <ArrowUpRight size={14} />
-          </a>
+            Start watching <ArrowUpRight size={14} />
+          </Link>
         </div>
       </div>
     </section>
   );
 }
 
-// ── Features chess ──────────────────────────────────────────────────────────
+// ── Coverage / Detection (chess) ────────────────────────────────────────────
 function FeaturesChess() {
   return (
-    <section id="services" style={{ background: "#000", padding: "120px 0" }}>
+    <section id="sources" style={{ background: "#000", padding: "120px 0" }}>
       <div className={styles.shell}>
         <div
           style={{
@@ -697,10 +908,10 @@ function FeaturesChess() {
               className={`${styles.liquidGlass} ${styles.pill}`}
               style={{ borderRadius: 999, marginBottom: 18, display: "inline-flex" }}
             >
-              Chapter II · Capabilities
+              Chapter II · Coverage
             </div>
             <BlurText
-              text="Pro features. Zero complexity."
+              text="Watch wide. Notify narrow."
               className={styles.hSection}
               as="h2"
               style={{ maxWidth: 900 }}
@@ -712,7 +923,7 @@ function FeaturesChess() {
           </div>
         </div>
 
-        {/* Row 1 */}
+        {/* Row 1: Watchlist coverage */}
         <div
           className={styles.chess}
           style={{
@@ -726,7 +937,7 @@ function FeaturesChess() {
         >
           <BlurIn>
             <div className={styles.eyebrow} style={{ marginBottom: 14 }}>
-              Essay 01 · Design
+              Essay 01 · Watchlist
             </div>
             <h3
               className={styles.fontHeading}
@@ -737,21 +948,22 @@ function FeaturesChess() {
                 letterSpacing: "-0.015em",
               }}
             >
-              Designed to convert.
+              Follow the lane.
               <br />
-              <span className={styles.hl}>Built to perform.</span>
+              <span className={styles.hl}>Skip the firehose.</span>
             </h3>
             <p className={styles.body} style={{ marginBottom: 24, maxWidth: 480 }}>
-              Every pixel is intentional. Our AI studies what works across thousands of top sites —
-              then builds yours to outperform them all.
+              Add artists, venues, cities, or radius rules. Import a Spotify playlist if that&rsquo;s
+              easier. UGround only watches what you actually care about — no calendar of every show
+              in the country, no algorithmic guesses.
             </p>
-            <a
-              href="#"
+            <Link
+              href="/signup"
               className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
               style={{ borderRadius: 999, padding: "12px 22px", fontSize: 13 }}
             >
-              Learn more <ArrowUpRight size={13} />
-            </a>
+              Build your watchlist <ArrowUpRight size={13} />
+            </Link>
           </BlurIn>
           <BlurIn delay={0.2}>
             <div
@@ -763,17 +975,12 @@ function FeaturesChess() {
                 background: "#0a0a0b",
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={FEATURE_GIF_1}
-                alt=""
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-              />
+              <WatchlistMock />
             </div>
           </BlurIn>
         </div>
 
-        {/* Row 2 */}
+        {/* Row 2: Detection */}
         <div
           className={styles.chess}
           style={{
@@ -795,17 +1002,12 @@ function FeaturesChess() {
                 background: "#0a0a0b",
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={FEATURE_GIF_2}
-                alt=""
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-              />
+              <AlertFeedMock />
             </div>
           </BlurIn>
           <BlurIn delay={0.2}>
             <div className={styles.eyebrow} style={{ marginBottom: 14 }}>
-              Essay 02 · Intelligence
+              Essay 02 · Detection
             </div>
             <h3
               className={styles.fontHeading}
@@ -816,20 +1018,21 @@ function FeaturesChess() {
                 letterSpacing: "-0.015em",
               }}
             >
-              It gets smarter.
+              We don&rsquo;t list shows.
               <br />
-              <span className={styles.hl}>Automatically.</span>
+              <span className={styles.hl}>We list changes.</span>
             </h3>
             <p className={styles.body} style={{ marginBottom: 24, maxWidth: 480 }}>
-              Your site evolves on its own. AI monitors every click, scroll, and conversion — then
-              optimizes in real time. No manual updates. Ever.
+              Status flips from announced to on-sale. Presales cracking open early. New dates
+              landing in your radius. UGround surfaces the moment something becomes a ticket — and
+              gets out of the way otherwise.
             </p>
             <a
-              href="#"
+              href="#numbers"
               className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
               style={{ borderRadius: 999, padding: "12px 22px", fontSize: 13 }}
             >
-              See how it works <ArrowUpRight size={13} />
+              See the numbers <ArrowUpRight size={13} />
             </a>
           </BlurIn>
         </div>
@@ -838,7 +1041,7 @@ function FeaturesChess() {
   );
 }
 
-// ── Pull quote ───────────────────────────────────────────────────────────────
+// ── Pull quote ──────────────────────────────────────────────────────────────
 function PullQuote() {
   return (
     <section style={{ padding: "120px 0", background: "#000" }}>
@@ -854,13 +1057,13 @@ function PullQuote() {
           }}
         >
           <BlurText
-            text='"A complete rebuild in five days. The result outperformed everything we had spent months building before."'
+            text='"My phone buzzed forty seconds after Ticketmaster flipped. I had two seats before the announcement hit Twitter."'
             className={styles.fontHeading}
             style={{ fontSize: "clamp(32px, 4.5vw, 64px)", lineHeight: 1.05, letterSpacing: "-0.01em" }}
             delay={40}
           />
           <div className={styles.eyebrow} style={{ marginTop: 28 }}>
-            — SARAH CHEN, CEO · LUMINARY
+            — DANIEL ORTEGA · BROOKLYN, NY
           </div>
         </div>
       </div>
@@ -868,19 +1071,19 @@ function PullQuote() {
   );
 }
 
-// ── Why Us ───────────────────────────────────────────────────────────────────
+// ── Why Us ──────────────────────────────────────────────────────────────────
 type IconComp = ({ size }: { size?: number }) => React.ReactElement;
 
 function WhyUs() {
   const items: [string, IconComp, string, string][] = [
-    ["A", ZapIcon, "Days, Not Months", "Concept to launch at a pace that redefines fast. Because waiting isn't a strategy."],
-    ["B", PaletteIcon, "Obsessively Crafted", "Every detail considered. Every element refined. Design so precise, it feels inevitable."],
-    ["C", BarChartIcon, "Built to Convert", "Layouts informed by data. Decisions backed by performance. Results you can measure."],
-    ["D", ShieldIcon, "Secure by Default", "Enterprise-grade protection comes standard. SSL, DDoS mitigation, compliance. All included."],
+    ["A", ZapIcon, "Seconds, Not Hours", "We poll once a minute and push the second something flips. No nightly digest, no batched email."],
+    ["B", ListIcon, "Watchlist-First", "You decide who's worth a ping. We don't pretend every show in your city is interesting."],
+    ["C", RadarIcon, "Real Sources", "Ticketmaster, Eventbrite, Songkick, Bandsintown, AXS, DICE — the platforms that actually sell the seats."],
+    ["D", BellIcon, "Your Channels", "Email, Discord, SMS. Pick one, pick three. Whichever buzzes loudest when it matters."],
   ];
 
   return (
-    <section id="work" style={{ background: "#000", padding: "120px 0" }}>
+    <section style={{ background: "#000", padding: "120px 0" }}>
       <div className={styles.shell}>
         <div
           style={{
@@ -897,10 +1100,10 @@ function WhyUs() {
               className={`${styles.liquidGlass} ${styles.pill}`}
               style={{ borderRadius: 999, marginBottom: 18, display: "inline-flex" }}
             >
-              Why Us
+              Why UGround
             </div>
             <BlurText
-              text="The difference is everything."
+              text="The difference is the difference."
               className={styles.hSection}
               as="h2"
               style={{ maxWidth: 900 }}
@@ -977,7 +1180,10 @@ function WhyUs() {
 // ── Stats ────────────────────────────────────────────────────────────────────
 function Stats() {
   return (
-    <section style={{ position: "relative", overflow: "hidden", padding: "160px 0" }}>
+    <section
+      id="numbers"
+      style={{ position: "relative", overflow: "hidden", padding: "160px 0" }}
+    >
       <HlsVideo src={STATS_HLS} saturate={0} />
       <div className={styles.dimOverlay} style={{ background: "rgba(0,0,0,0.6)" }} />
       <div className={styles.fadeTop} />
@@ -1017,10 +1223,10 @@ function Stats() {
         <BlurIn>
           <div className={styles.liquidGlass} style={{ borderRadius: 28, padding: "8px 36px" }}>
             {[
-              ["200+", "Sites launched", "since 2024"],
-              ["98%", "Client satisfaction", "verified"],
-              ["3.2×", "More conversions", "median lift"],
-              ["5 days", "Average delivery", "concept to live"],
+              ["6", "Sources watched", "ticketmaster · eventbrite · songkick · …"],
+              ["60s", "Poll cadence", "every artist, every minute"],
+              ["3", "Notification channels", "email · discord · sms"],
+              ["< 90s", "Median alert latency", "flip to phone"],
             ].map(([v, l, ctx]) => (
               <div key={l} className={styles.ledgerRow}>
                 <div
@@ -1053,12 +1259,24 @@ function Stats() {
   );
 }
 
-// ── Testimonials ─────────────────────────────────────────────────────────────
+// ── Field reports / Testimonials ─────────────────────────────────────────────
 function Testimonials() {
   const quotes: [string, string, string][] = [
-    ["A complete rebuild in five days. The result outperformed everything we had spent months building before.", "Sarah Chen", "CEO, Luminary"],
-    ["Conversions up 4×. That's not a typo. The design just works differently when it's built on real data.", "Marcus Webb", "Head of Growth, Arcline"],
-    ["They didn't just design our site. They defined our brand. World-class doesn't begin to cover it.", "Elena Voss", "Brand Director, Helix"],
+    [
+      "I'd been refreshing the venue page for a week. UGround pinged me at 11:43 on a Tuesday and I had wristbands by 11:45.",
+      "Maya Chen",
+      "Photographer · Brooklyn",
+    ],
+    [
+      "The watchlist import from Spotify did half the work for me. It just knows the bands I'd actually drive for.",
+      "Jordan Park",
+      "Tour manager · Atlanta",
+    ],
+    [
+      "Three small-room shows last quarter that I would have missed entirely. That's three more good nights than I had before.",
+      "Eli Thornton",
+      "Show-goer · Chicago",
+    ],
   ];
 
   return (
@@ -1079,10 +1297,10 @@ function Testimonials() {
               className={`${styles.liquidGlass} ${styles.pill}`}
               style={{ borderRadius: 999, marginBottom: 18, display: "inline-flex" }}
             >
-              Chapter IV · Letters
+              Chapter IV · Field reports
             </div>
             <BlurText
-              text="In their words."
+              text="From the front row."
               className={styles.hSection}
               as="h2"
               style={{ maxWidth: 900 }}
@@ -1153,9 +1371,9 @@ function Testimonials() {
 // ── CTA + Footer ─────────────────────────────────────────────────────────────
 function CtaFooter() {
   const footerCols = [
-    { heading: "Studio", links: ["Services", "Work", "Process", "Pricing"] },
-    { heading: "Resources", links: ["Field Guide", "Case Studies", "Changelog", "Blog"] },
-    { heading: "Contact", links: ["hello@studio.com", "Twitter ↗", "LinkedIn ↗", "Instagram ↗"] },
+    { heading: "UGround", links: ["How it works", "Sources", "Numbers", "Field reports"] },
+    { heading: "Account", links: ["Sign in", "Create account", "Dashboard", "Reset password"] },
+    { heading: "Sources", links: ["Ticketmaster", "Eventbrite", "Songkick", "AXS · DICE"] },
   ];
 
   return (
@@ -1169,7 +1387,7 @@ function CtaFooter() {
           Chapter V · Begin
         </div>
         <BlurText
-          text="Your next website starts here."
+          text="Catch your next show first."
           className={styles.fontHeading}
           style={{
             fontSize: "clamp(56px, 8vw, 128px)",
@@ -1185,26 +1403,22 @@ function CtaFooter() {
             className={styles.lead}
             style={{ maxWidth: 560, marginBottom: 36, color: "rgba(255,255,255,0.85)" }}
           >
-            Book a free strategy call. See what AI-powered design can do. No commitment, no
-            pressure. Just possibilities.
+            Build a watchlist in two minutes. Pick a channel that buzzes loud enough. We&rsquo;ll
+            handle the refreshing.
           </p>
         </BlurIn>
         <BlurIn delay={0.6}>
           <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-            <a
-              href="#"
+            <Link
+              href="/signup"
               className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
               style={{ borderRadius: 999, padding: "14px 26px", fontSize: 14 }}
             >
-              Book a Call <ArrowUpRight size={14} />
-            </a>
-            <a
-              href="#"
-              className={styles.btnWhite}
-              style={{ padding: "14px 26px", fontSize: 14 }}
-            >
-              View Pricing
-            </a>
+              Start watching <ArrowUpRight size={14} />
+            </Link>
+            <Link href="/login" className={styles.btnWhite} style={{ padding: "14px 26px", fontSize: 14 }}>
+              I already have an account
+            </Link>
           </div>
         </BlurIn>
 
@@ -1222,11 +1436,11 @@ function CtaFooter() {
                 className={styles.fontHeading}
                 style={{ fontSize: 32, lineHeight: 1, marginBottom: 12 }}
               >
-                Studio
+                UGround
               </div>
               <p className={styles.body} style={{ maxWidth: 320 }}>
-                The website your brand deserves — designed by AI, refined by humans, shipped in
-                days.
+                Watchlist-powered presale alerts for the artists, venues, and cities you actually
+                care about.
               </p>
             </div>
             {footerCols.map(({ heading, links }) => (
@@ -1266,7 +1480,7 @@ function CtaFooter() {
             }}
           >
             <div className={styles.tiny} style={{ color: "rgba(255,255,255,0.4)" }}>
-              © 2026 Studio. All rights reserved. · Colophon set in Instrument Serif &amp; Barlow.
+              © 2026 UGround. Public sources only — no scraping behind paywalls.
             </div>
             <div style={{ display: "flex", gap: 24 }}>
               {["Privacy", "Terms", "Contact"].map((l) => (

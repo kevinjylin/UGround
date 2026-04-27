@@ -29,8 +29,9 @@ const barlow = Barlow({
 });
 
 export const metadata: Metadata = {
-  title: "Studio · The Website Your Brand Deserves",
-  description: "Stunning design. Blazing performance. Built by AI, refined by experts.",
+  title: "UGround · Catch the show before the feed wakes up",
+  description:
+    "Watchlist-powered presale alerts. UGround watches Ticketmaster, Eventbrite, Songkick, AXS & more — and pings you the second a date drops, a status flips, or a presale opens.",
 };
 
 export default function RootLayout({
