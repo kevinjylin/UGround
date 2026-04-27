@@ -441,6 +441,12 @@ button:disabled {
   }
 }
 
+/* Reset body for Studio landing page */
+body:has(#studio-landing) {
+  padding: 0;
+  background: #000;
+}
+
 .loginShell {
   min-height: 100vh;
   display: grid;

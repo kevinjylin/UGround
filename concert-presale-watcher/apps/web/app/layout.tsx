@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Instrument_Serif, Barlow } from "next/font/google";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -12,9 +13,24 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
 });
 
+const instrumentSerif = Instrument_Serif({
+  weight: "400",
+  style: ["normal", "italic"],
+  subsets: ["latin"],
+  variable: "--font-instrument-serif",
+  display: "swap",
+});
+
+const barlow = Barlow({
+  weight: ["300", "400", "500", "600"],
+  subsets: ["latin"],
+  variable: "--font-barlow",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "UGround",
-  description: "presale alerts for artists you follow",
+  title: "Studio · The Website Your Brand Deserves",
+  description: "Stunning design. Blazing performance. Built by AI, refined by experts.",
 };
 
 export default function RootLayout({
@@ -24,7 +40,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} ${barlow.variable}`}
+      >
+        {children}
+      </body>
     </html>
   );
 }

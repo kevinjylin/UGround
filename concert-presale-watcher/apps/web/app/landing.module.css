@@ -1,0 +1,458 @@
+/* Studio — Magazine Spread landing page, dark + liquid glass */
+
+.studioPage {
+  --fg: #ffffff;
+  --fg-70: rgba(255, 255, 255, 0.7);
+  --fg-60: rgba(255, 255, 255, 0.6);
+  --fg-50: rgba(255, 255, 255, 0.5);
+  --fg-40: rgba(255, 255, 255, 0.4);
+  --fg-25: rgba(255, 255, 255, 0.25);
+  --fg-15: rgba(255, 255, 255, 0.15);
+  --rule: rgba(255, 255, 255, 0.18);
+  background: #000;
+  color: #fff;
+  position: relative;
+  font-family: var(--font-barlow), "Barlow", system-ui, sans-serif;
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+.fontHeading {
+  font-family: var(--font-instrument-serif), "Instrument Serif", serif;
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* ── Liquid glass — subtle ─────────────────────────────────────────────────── */
+.liquidGlass {
+  background: rgba(255, 255, 255, 0.04);
+  background-blend-mode: luminosity;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: none;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+.liquidGlass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.15) 20%,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.15) 80%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Liquid glass — strong ─────────────────────────────────────────────────── */
+.liquidGlassStrong {
+  background: rgba(255, 255, 255, 0.06);
+  background-blend-mode: luminosity;
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: none;
+  box-shadow: 4px 4px 18px rgba(0, 0, 0, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+.liquidGlassStrong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.22) 20%,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.22) 80%,
+    rgba(255, 255, 255, 0.55) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Pill / buttons ────────────────────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.pillStrong {
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  color: #fff;
+  position: relative;
+}
+.pillStrong::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+  pointer-events: none;
+  transition: box-shadow 360ms ease;
+}
+.pillStrong:hover::after {
+  box-shadow: 0 0 32px 0 rgba(255, 255, 255, 0.18);
+}
+
+.btnWhite {
+  background: #fff;
+  color: #0a0a0b;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btnText {
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* ── Headings ──────────────────────────────────────────────────────────────── */
+.hMega {
+  font-family: var(--font-instrument-serif), "Instrument Serif", serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  line-height: 0.8;
+  font-size: clamp(72px, 11vw, 168px);
+  color: #fff;
+  margin: 0;
+}
+
+.hSection {
+  font-family: var(--font-instrument-serif), "Instrument Serif", serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 0.9;
+  font-size: clamp(40px, 5.2vw, 76px);
+  color: #fff;
+  margin: 0;
+}
+
+/* ── Editorial accents ─────────────────────────────────────────────────────── */
+.eyebrow {
+  font-family: "Barlow", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 500;
+}
+
+.ruleDashed {
+  border: none;
+  border-top: 1px dashed rgba(255, 255, 255, 0.25);
+  margin: 0;
+}
+
+/* ── Body copy ─────────────────────────────────────────────────────────────── */
+.lead {
+  font-size: 16px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 300;
+}
+.body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 300;
+}
+.tiny {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Soft highlight swipe */
+.hl {
+  background: linear-gradient(
+    180deg,
+    transparent 60%,
+    rgba(255, 255, 255, 0.18) 60% 92%,
+    transparent 92%
+  );
+  padding: 0 4px;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+.shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 48px;
+}
+
+.z10 {
+  position: relative;
+  z-index: 10;
+}
+
+/* ── Video utilities ───────────────────────────────────────────────────────── */
+.videoBg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+.fadeTop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 200px;
+  background: linear-gradient(to bottom, #000 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+.fadeBottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 200px;
+  background: linear-gradient(to top, #000 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+.fadeBottomTall {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 300px;
+  background: linear-gradient(to top, #000 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+.dimOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ── Marquee ───────────────────────────────────────────────────────────────── */
+@keyframes marqueeScroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+.marquee {
+  display: flex;
+  gap: 72px;
+  animation: marqueeScroll 38s linear infinite;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────────── */
+.cardLift {
+  transition: transform 320ms ease, box-shadow 320ms ease;
+}
+.cardLift:hover {
+  transform: translateY(-3px);
+}
+
+/* ── Number plate ──────────────────────────────────────────────────────────── */
+.numplate {
+  font-family: var(--font-instrument-serif), "Instrument Serif", serif;
+  font-style: italic;
+  font-size: clamp(64px, 9vw, 128px);
+  line-height: 0.85;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+/* ── Stats ledger ──────────────────────────────────────────────────────────── */
+.ledgerRow {
+  display: grid;
+  grid-template-columns: 200px 1fr 220px;
+  align-items: center;
+  padding: 28px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.15);
+}
+.ledgerRow:last-child {
+  border-bottom: none;
+}
+.ledgerCtx {
+  text-align: right;
+}
+
+/* ── Grids ─────────────────────────────────────────────────────────────────── */
+.grid4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.chess {
+  display: grid;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────────── */
+.heroGrid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 40px;
+  align-items: stretch;
+}
+.heroByline {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 32px;
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.18);
+}
+
+/* ── Process ───────────────────────────────────────────────────────────────── */
+.processGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  margin-top: 48px;
+  border-top: 2px solid rgba(255, 255, 255, 0.85);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.18);
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.footerGrid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 32px;
+  margin-bottom: 56px;
+}
+
+/* ── Focus rings ───────────────────────────────────────────────────────────── */
+.studioPage button:focus-visible,
+.studioPage a:focus-visible {
+  outline: 1.5px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+.studioPage ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.studioPage ::-webkit-scrollbar-track {
+  background: #000;
+}
+.studioPage ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+.studioPage ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .heroGrid {
+    grid-template-columns: 1fr;
+  }
+  .heroByline {
+    grid-template-columns: 1fr;
+  }
+  .chess {
+    grid-template-columns: 1fr !important;
+  }
+  .processGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .footerGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .shell {
+    padding: 0 24px;
+  }
+  .grid4 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .grid3 {
+    grid-template-columns: 1fr;
+  }
+  .hMega {
+    font-size: 64px;
+  }
+  .ledgerRow {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 20px 0;
+  }
+  .ledgerCtx {
+    text-align: left;
+  }
+}
+
+@media (max-width: 600px) {
+  .processGrid {
+    grid-template-columns: 1fr;
+  }
+  .footerGrid {
+    grid-template-columns: 1fr;
+  }
+}
