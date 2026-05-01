@@ -1,5 +1,5 @@
 # UGround
 
-https://concert-track.vercel.app
+www.uground.app
 
 never miss a presale
