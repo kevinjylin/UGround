@@ -24,6 +24,8 @@
   box-shadow:
     4px 4px 24px rgba(0, 0, 0, 0.32),
     inset 0 1px 1px rgba(255, 255, 255, 0.16);
+  position: relative;
+  overflow: hidden;
 }
 
 .utilityBar {
@@ -172,13 +174,24 @@
   padding: 16px;
 }
 
-.panel h2, .feedHeader h2, .drawerHeader h2 {
+.panel h2, .drawerHeader h2 {
   margin: 0 0 12px;
   font-family: var(--font-instrument-serif), serif;
   font-style: italic;
   font-weight: 400;
   letter-spacing: -0.015em;
   font-size: clamp(28px, 3.2vw, 40px);
+  line-height: 0.95;
+  color: #fff;
+}
+
+.feedHeader h2 {
+  margin: 0;
+  font-family: var(--font-instrument-serif), serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  font-size: clamp(36px, 4.5vw, 56px);
   line-height: 0.95;
   color: #fff;
 }
@@ -191,9 +204,6 @@
   margin-bottom: 10px;
 }
 
-.feedHeader h2 {
-  margin: 0;
-}
 
 .feedHeader span {
   color: rgba(255, 255, 255, 0.5);
@@ -205,6 +215,30 @@
 
 .eventPanel {
   min-height: 320px;
+  position: relative;
+  overflow: hidden;
+}
+
+.eventPanel::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 140px;
+  aspect-ratio: 1;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+  transform: rotate(7deg);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 0;
+}
+.eventPanel > * {
+  position: relative;
+  z-index: 1;
 }
 
 .list {
@@ -218,6 +252,8 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.03);
+  position: relative;
+  overflow: hidden;
 }
 
 .eventCard {
@@ -399,9 +435,11 @@
 }
 
 .statusBadgePostponed,
-
-
-
+.statusBadgeRescheduled {
+  border-color: rgba(244, 196, 122, 0.34);
+  background: rgba(244, 196, 122, 0.1);
+  color: rgba(255, 232, 188, 0.92);
+}
 
 .alertBadge {
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -521,6 +559,18 @@
 
 
 
+.dashboardPage textarea {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.32);
+  color: #fff;
+  min-height: 96px;
+  padding: 12px 16px;
+  font-family: inherit;
+  font-weight: 300;
+  resize: vertical;
+}
 
 .dashboardPage input::placeholder,
 .dashboardPage textarea::placeholder {
@@ -859,16 +909,8 @@
   }
 
   .sortControl {
-  color: rgba(255, 255, 255, 0.5);
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
+    flex: 1;
+  }
 
   .sortControl select {
     width: 100%;
@@ -877,12 +919,8 @@
 
 @media (max-width: 640px) {
   .dashboardPage {
-  min-height: 100svh;
-  color: #fff;
-  font-family: var(--font-barlow), system-ui, sans-serif;
-  font-weight: 300;
-  padding: clamp(18px, 3vw, 28px);
-}
+    padding: 10px;
+  }
 
   .utilityIdentity,
   .toolbarActions,
@@ -924,17 +962,39 @@
   }
 
   .settingsDrawer {
-  position: relative;
-  z-index: 1;
-  grid-column: 2;
-  height: 100svh;
-  min-width: 0;
-  overflow: hidden;
-  background: rgba(15, 15, 15, 0.92);
-  border-left: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(34px);
-  box-shadow: -18px 0 60px rgba(0, 0, 0, 0.5);
-  display: grid;
-  grid-template-rows: auto 1fr;
+    grid-column: 1;
+    width: 100%;
+  }
 }
+
+.utilityBar::before,
+.toolbar::before,
+.panel::before,
+.eventCard::before,
+.settingsDrawer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.15) 20%,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.15) 80%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+@media (min-width: 860px) {
+  .utilityActions {
+    border-left: 1px dashed rgba(255, 255, 255, 0.2);
+    padding-left: 14px;
+  }
 }
