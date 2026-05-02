@@ -1,19 +1,34 @@
-.dashboardPage {
+import re
+
+with open("concert-presale-watcher/apps/web/app/dashboard/dashboard.module.css", "r") as f:
+    css = f.read()
+
+# Helper function to replace a block using regex
+def replace_block(pattern, replacement, text):
+    new_text = re.sub(pattern, replacement, text, flags=re.MULTILINE | re.DOTALL)
+    if new_text == text:
+        print(f"Warning: No match found for pattern:\n{pattern}")
+    return new_text
+
+# 1. .dashboardPage
+css = replace_block(r'\.dashboardPage \{[^\}]+\}', '''.dashboardPage {
   min-height: 100svh;
   color: #fff;
   font-family: var(--font-barlow), system-ui, sans-serif;
   font-weight: 300;
   padding: clamp(18px, 3vw, 28px);
-}
+}''', css)
 
-.shell {
+# .shell
+css = replace_block(r'\.shell \{[^\}]+\}', '''.shell {
   width: min(1180px, 100%);
   margin: 0 auto;
   display: grid;
   gap: 18px;
-}
+}''', css)
 
-.utilityBar,
+# 2. .utilityBar, .toolbar, .panel
+css = replace_block(r'\.utilityBar,\n\.toolbar,\n\.panel \{[^\}]+\}', '''.utilityBar,
 .toolbar,
 .panel {
   border: 0;
@@ -24,9 +39,10 @@
   box-shadow:
     4px 4px 24px rgba(0, 0, 0, 0.32),
     inset 0 1px 1px rgba(255, 255, 255, 0.16);
-}
+}''', css)
 
-.utilityBar {
+# .utilityBar padding
+css = replace_block(r'\.utilityBar \{[^}]+padding: 12px 14px;[^}]+\}', '''.utilityBar {
   position: sticky;
   top: 0;
   z-index: 20;
@@ -36,16 +52,10 @@
   justify-content: space-between;
   gap: 14px;
   padding: 14px 18px;
-}
+}''', css)
 
-.utilityIdentity {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.brand {
+# 3. .brand
+css = replace_block(r'\.brand \{[^\}]+\}', '''.brand {
   color: #fff;
   flex-shrink: 0;
   font-family: var(--font-geist-mono), monospace;
@@ -53,10 +63,10 @@
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  text-decoration: none;
-}
+}''', css)
 
-.utilityStats {
+# 4. .utilityStats
+css = replace_block(r'\.utilityStats \{[^\}]+\}', '''.utilityStats {
   color: rgba(255, 255, 255, 0.6);
   display: flex;
   align-items: center;
@@ -64,49 +74,20 @@
   gap: 6px 10px;
   min-width: 0;
   font-size: 13px;
-}
+}''', css)
 
-.utilityStats span {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-}
-
-.utilityStats span:not(:last-child)::after {
+css = replace_block(r'\.utilityStats span:not\(:last-child\)::after \{[^\}]+\}', '''.utilityStats span:not(:last-child)::after {
   content: "";
   width: 3px;
   height: 3px;
-  border-radius: 999px;
+  border-radius: var(--r-full);
   background: rgba(255, 255, 255, 0.34);
   margin-left: 10px;
-}
+}''', css)
 
-.utilityActions,
-.toolbarActions,
-.actionRow,
-.confirmRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
-.toolbar {
-  min-height: 54px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 13px;
-  padding: 10px;
-}
-
-.filterGroup {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.filterPill {
+# 5. .filterPill
+css = replace_block(r'\.filterPill \{[^\}]+\}', '''.filterPill {
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.7);
@@ -119,37 +100,21 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: background 120ms ease, border-color 120ms ease;
-}
+}''', css)
 
-.filterPill:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.25);
-  box-shadow: none;
-  transform: none;
-}
-
-.filterPill span {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 11px;
-}
-
-.filterPillActive {
+css = replace_block(r'\.filterPillActive \{[^\}]+\}', '''.filterPillActive {
   border-color: #fff;
   background: #fff;
   color: #070707;
-}
+}''', css)
 
-.filterPillActive:hover {
-  background: #fff;
-  border-color: #fff;
-}
-
-.filterPillActive span {
+css = replace_block(r'\.filterPillActive span \{[^\}]+\}', '''.filterPillActive span {
   color: rgba(7, 7, 7, 0.6);
-}
+}''', css)
 
-.sortControl {
+
+# 6. .sortControl
+css = replace_block(r'\.sortControl \{[^\}]+\}', '''.sortControl {
   color: rgba(255, 255, 255, 0.5);
   display: inline-flex;
   align-items: center;
@@ -159,20 +124,12 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
+}''', css)
 
-.sortControl select {
-  width: auto;
-  min-height: 34px;
-  padding-right: 30px;
-  text-transform: none;
-}
 
-.panel {
-  padding: 16px;
-}
-
-.panel h2, .feedHeader h2, .drawerHeader h2 {
+# 7. headings
+# Currently: .panel h2  and .feedHeader h2  and .drawerHeader h2
+css = replace_block(r'\.panel h2 \{[^\}]+\}', '''.panel h2, .feedHeader h2, .drawerHeader h2 {
   margin: 0 0 12px;
   font-family: var(--font-instrument-serif), serif;
   font-style: italic;
@@ -181,69 +138,36 @@
   font-size: clamp(28px, 3.2vw, 40px);
   line-height: 0.95;
   color: #fff;
-}
+}''', css)
 
-.feedHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.feedHeader h2 {
+css = replace_block(r'\.feedHeader h2 \{[^\}]+\}', '''.feedHeader h2 {
   margin: 0;
-}
+}''', css)
 
-.feedHeader span {
+# Remove the separate .drawerHeader h2 block completely since it's now grouped
+css = replace_block(r'\n\.drawerHeader h2 \{[^\}]+\}', '', css)
+
+
+# 8. .feedHeader span
+css = replace_block(r'\.feedHeader span \{[^\}]+\}', '''.feedHeader span {
   color: rgba(255, 255, 255, 0.5);
   font-family: var(--font-geist-mono), monospace;
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
+}''', css)
 
-.eventPanel {
-  min-height: 320px;
-}
 
-.list {
-  list-style: none;
-  display: grid;
-  gap: 8px;
-}
-
-.eventCard,
+# 9. .eventCard, .listItem
+css = replace_block(r'\.eventCard,\n\.listItem \{[^\}]+\}', '''.eventCard,
 .listItem {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.03);
-}
+}''', css)
 
-.eventCard {
-  min-width: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 12px;
-}
-
-.eventCardMain {
-  min-width: 0;
-  display: grid;
-  gap: 5px;
-  flex: 1;
-}
-
-.eventCardTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.eventArtist {
+# 10. event typography
+css = replace_block(r'\.eventArtist \{[^\}]+\}', '''.eventArtist {
   color: #fff;
   font-family: var(--font-instrument-serif), serif;
   font-style: italic;
@@ -251,25 +175,25 @@
   font-size: 22px;
   line-height: 1.05;
   overflow-wrap: anywhere;
-}
+}''', css)
 
-.eventTitle {
+css = replace_block(r'\.eventTitle \{[^\}]+\}', '''.eventTitle {
   color: rgba(255, 255, 255, 0.7);
   font-size: 14px;
   font-weight: 300;
   overflow-wrap: anywhere;
-}
+}''', css)
 
-.eventMeta {
+css = replace_block(r'\.eventMeta \{[^\}]+\}', '''.eventMeta {
   color: rgba(255, 255, 255, 0.5);
   font-family: var(--font-geist-mono), monospace;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1.45;
-}
+}''', css)
 
-.activityLine {
+css = replace_block(r'\.activityLine \{[^\}]+\}', '''.activityLine {
   min-width: 0;
   display: flex;
   align-items: center;
@@ -278,19 +202,16 @@
   margin-top: 4px;
   color: rgba(255, 255, 255, 0.6);
   font-size: 13px;
-}
+}''', css)
 
-.activityMessage {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.activityMuted,
+css = replace_block(r'\.activityMuted,\n\.alertTime \{[^\}]+\}', '''.activityMuted,
 .alertTime {
   color: rgba(255, 255, 255, 0.42);
-}
+}''', css)
 
-.ticketLink {
+
+# 11. .ticketLink
+css = replace_block(r'\.ticketLink \{[^\}]+\}', '''.ticketLink {
   flex-shrink: 0;
   background: #fff;
   color: #070707;
@@ -306,14 +227,16 @@
   text-decoration: none;
   white-space: nowrap;
   transition: box-shadow 220ms ease, transform 220ms ease, background 220ms ease;
-}
+}''', css)
 
-.ticketLink:hover {
+css = replace_block(r'\.ticketLink:hover \{[^\}]+\}', '''.ticketLink:hover {
   box-shadow: 0 0 28px rgba(255, 255, 255, 0.18);
   transform: translateY(-1px);
-}
+}''', css)
 
-.timelineToggle {
+
+# 12. .timelineToggle
+css = replace_block(r'\.timelineToggle \{[^\}]+\}', '''.timelineToggle {
   width: fit-content;
   border: 0;
   background: transparent;
@@ -327,52 +250,21 @@
   cursor: pointer;
   font-weight: 700;
   padding: 2px 0;
-}
+}''', css)
 
-.timelineToggle:hover {
-  color: #fff;
-  box-shadow: none;
-  transform: none;
-}
-
-.alertTimeline {
+# 13. .alertTimeline
+css = replace_block(r'\.alertTimeline \{[^\}]+\}', '''.alertTimeline {
   border-left: 1px dashed rgba(255, 255, 255, 0.2);
   display: grid;
   gap: 8px;
   list-style: none;
   margin: 6px 0 0 6px;
   padding-left: 12px;
-}
+}''', css)
 
-.timelineItem {
-  display: grid;
-  gap: 6px;
-}
 
-.timelineItem p {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.timelineItemTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.statusBadge,
-.alertBadge,
-.channelChip,
-.pill {
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.statusBadge {
+# 14. Status badges
+css = replace_block(r'\.statusBadge \{[^\}]+\}', '''.statusBadge {
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.7);
@@ -384,26 +276,31 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   min-height: 0;
-}
+}''', css)
 
-.statusBadgeOnsale {
+css = replace_block(r'\.statusBadgeOnsale \{[^\}]+\}', '''.statusBadgeOnsale {
   border-color: rgba(111, 214, 149, 0.34);
   background: rgba(111, 214, 149, 0.1);
   color: rgba(226, 255, 235, 0.88);
-}
+}''', css)
 
-.statusBadgeCancelled {
+css = replace_block(r'\.statusBadgeCancelled \{[^\}]+\}', '''.statusBadgeCancelled {
   border-color: rgba(255, 109, 109, 0.38);
   background: rgba(255, 109, 109, 0.1);
   color: rgba(255, 214, 214, 0.92);
-}
+}''', css)
 
-.statusBadgePostponed,
+css = replace_block(r'\.statusBadgePostponed \{[^\}]+\}', '''.statusBadgePostponed,
+.statusBadgeRescheduled {
+  border-color: rgba(244, 196, 122, 0.34);
+  background: rgba(244, 196, 122, 0.1);
+  color: rgba(255, 232, 188, 0.92);
+}''', css)
+
+css = replace_block(r'\.statusBadgeRescheduled \{[^\}]+\}', '', css)
 
 
-
-
-.alertBadge {
+css = replace_block(r'\.alertBadge \{[^\}]+\}', '''.alertBadge {
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.7);
@@ -414,40 +311,35 @@
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-}
+}''', css)
 
-.alertBadgeNew {
+css = replace_block(r'\.alertBadgeNew \{[^\}]+\}', '''.alertBadgeNew {
   border-color: rgba(244, 196, 122, 0.34);
   background: rgba(244, 196, 122, 0.1);
   color: rgba(255, 232, 188, 0.92);
-}
+}''', css)
 
-.alertBadgeStatus {
+css = replace_block(r'\.alertBadgeStatus \{[^\}]+\}', '''.alertBadgeStatus {
   border-color: rgba(244, 196, 122, 0.34);
   background: rgba(244, 196, 122, 0.1);
   color: rgba(255, 232, 188, 0.92);
-}
+}''', css)
 
-.alertBadgeTicket {
+css = replace_block(r'\.alertBadgeTicket \{[^\}]+\}', '''.alertBadgeTicket {
   border-color: rgba(111, 214, 149, 0.34);
   background: rgba(111, 214, 149, 0.1);
   color: rgba(226, 255, 235, 0.88);
-}
+}''', css)
 
-.alertBadgeUrgent {
+css = replace_block(r'\.alertBadgeUrgent \{[^\}]+\}', '''.alertBadgeUrgent {
   border-color: rgba(255, 109, 109, 0.38);
   background: rgba(255, 109, 109, 0.1);
   color: rgba(255, 214, 214, 0.92);
-}
+}''', css)
 
-.channelChips {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-}
 
-.channelChip {
+# 15. Channel chips
+css = replace_block(r'\.channelChip \{[^\}]+\}', '''.channelChip {
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.04);
   color: rgba(255, 255, 255, 0.6);
@@ -457,55 +349,25 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
+}''', css)
 
-.channelChipSent {
+css = replace_block(r'\.channelChipSent \{[^\}]+\}', '''.channelChipSent {
   border-color: rgba(111, 214, 149, 0.3);
   background: rgba(111, 214, 149, 0.08);
   color: rgba(226, 255, 235, 0.84);
-}
+}''', css)
 
-.channelChipStored,
+
+css = replace_block(r'\.channelChipStored,\n\.pill \{[^\}]+\}', '''.channelChipStored,
 .pill {
   border-color: rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.04);
   color: rgba(255, 255, 255, 0.6);
-}
+}''', css)
 
-.channelChipStored {
-  font-style: italic;
-}
 
-.pill {
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.stack {
-  display: grid;
-  gap: 10px;
-}
-
-.fieldsetSection {
-  border: 1px dashed rgba(255, 255, 255, 0.2);
-  border-radius: 18px;
-  margin-top: 14px;
-  padding: 14px;
-}
-
-.fieldsetSection legend {
-  color: rgba(255, 255, 255, 0.5);
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  padding: 0 7px;
-  text-transform: uppercase;
-}
-
-.dashboardPage input,
+# 16. Inputs
+css = replace_block(r'\.dashboardPage input,\n\.dashboardPage textarea,\n\.dashboardPage select \{[^\}]+\}', '''.dashboardPage input,
 .dashboardPage select {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -518,30 +380,38 @@
   font-weight: 300;
 }
 
+.dashboardPage textarea {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.32);
+  color: #fff;
+  min-height: 96px;
+  padding: 12px 16px;
+  font-family: inherit;
+  font-weight: 300;
+  resize: vertical;
+}''', css)
+
+css = replace_block(r'\.dashboardPage textarea \{[^\}]+\}', '', css)
 
 
-
-
-.dashboardPage input::placeholder,
+css = replace_block(r'\.dashboardPage input::placeholder,\n\.dashboardPage textarea::placeholder \{[^\}]+\}', '''.dashboardPage input::placeholder,
 .dashboardPage textarea::placeholder {
   color: rgba(255, 255, 255, 0.42);
-}
+}''', css)
 
-.dashboardPage input:focus-visible,
+css = replace_block(r'\.dashboardPage input:focus-visible,\n\.dashboardPage textarea:focus-visible,\n\.dashboardPage select:focus-visible \{[^\}]+\}', '''.dashboardPage input:focus-visible,
 .dashboardPage textarea:focus-visible,
 .dashboardPage select:focus-visible {
   border-color: rgba(255, 255, 255, 0.52);
   box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.12);
   outline: none;
-}
+}''', css)
 
-.inlineInputs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
 
-.primaryButton,
+# 17. Buttons
+css = replace_block(r'\.primaryButton,\n\.secondaryButton,\n\.dangerButton,\n\.logoutButton \{[^\}]+\}', '''.primaryButton,
 .secondaryButton,
 .dangerButton,
 .logoutButton {
@@ -557,60 +427,94 @@
   cursor: pointer;
   text-decoration: none;
   transition: box-shadow 220ms ease, transform 220ms ease, background 220ms ease;
-}
+}''', css)
 
-.primaryButton,
+css = replace_block(r'\.primaryButton,\n\.logoutButton,\n\.utilityActions \.secondaryButton,\n\.toolbarActions \.secondaryButton \{[^\}]+\}', '''.primaryButton,
 .logoutButton {
   border: 1px solid #fff;
   background: #fff;
   color: #070707;
-}
+}''', css)
 
-.secondaryButton {
+css = replace_block(r'\.secondaryButton \{[^\}]+\}', '''.secondaryButton {
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
-}
+}''', css)
 
-.dangerButton {
+css = replace_block(r'\.dangerButton \{[^\}]+\}', '''.dangerButton {
   border: 1px solid rgba(255, 109, 109, 0.38);
   background: rgba(255, 109, 109, 0.1);
   color: rgba(255, 214, 214, 0.92);
-}
+}''', css)
 
-.buttonSmall {
+css = replace_block(r'\.primaryButton:hover,\n\.logoutButton:hover,\n\.utilityActions \.secondaryButton:hover,\n\.toolbarActions \.secondaryButton:hover \{[^\}]+\}', '''.primaryButton:hover,
+.logoutButton:hover,
+.secondaryButton:hover {
+  box-shadow: 0 0 34px rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}''', css)
+
+css = replace_block(r'\.secondaryButton:hover \{[^\}]+\}', '', css)
+
+css = replace_block(r'\.dangerButton:hover \{[^\}]+\}', '''.dangerButton:hover {
+  box-shadow: 0 0 30px rgba(255, 109, 109, 0.18);
+  transform: translateY(-1px);
+}''', css)
+
+# 18. .buttonSmall
+css = replace_block(r'\.buttonSmall \{[^\}]+\}', '''.buttonSmall {
   min-height: 36px;
   padding: 0 14px;
   font-size: 12px;
-}
+}''', css)
 
-.primaryButton:hover,
-.secondaryButton:hover,
-.logoutButton:hover {
-  box-shadow: 0 0 34px rgba(255, 255, 255, 0.16);
-  transform: translateY(-1px);
-}
+# 19. .fieldsetSection
+css = replace_block(r'\.fieldsetSection \{[^\}]+\}', '''.fieldsetSection {
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 18px;
+  margin-top: 14px;
+  padding: 14px;
+}''', css)
 
-.dangerButton:hover {
-  box-shadow: 0 0 30px rgba(255, 109, 109, 0.18);
-  transform: translateY(-1px);
-}
+css = replace_block(r'\.fieldsetSection legend \{[^\}]+\}', '''.fieldsetSection legend {
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  padding: 0 7px;
+  text-transform: uppercase;
+}''', css)
 
-.primaryButton:disabled,
-.secondaryButton:disabled,
-.dangerButton:disabled,
-.logoutButton:disabled {
-  cursor: wait;
-  opacity: 0.52;
-  transform: none;
-  box-shadow: none;
-}
+# 20. .helpText
+css = replace_block(r'\.helpText \{[^\}]+\}', '''.helpText {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-top: 10px;
+}''', css)
 
-.advancedSection {
-  margin-top: 12px;
-}
+# 21. .checkRow
+css = replace_block(r'\.checkRow \{[^\}]+\}', '''.checkRow {
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+}''', css)
 
-.advancedSection summary {
+css = replace_block(r'\.checkRow input \{[^\}]+\}', '''.checkRow input {
+  accent-color: #fff;
+  height: 16px;
+  min-height: auto;
+  padding: 0;
+  width: auto;
+}''', css)
+
+
+# 22. .advancedSection summary
+css = replace_block(r'\.advancedSection summary \{[^\}]+\}', '''.advancedSection summary {
   color: rgba(255, 255, 255, 0.6);
   font-family: var(--font-geist-mono), monospace;
   font-size: 11px;
@@ -618,80 +522,32 @@
   text-transform: uppercase;
   cursor: pointer;
   font-weight: 600;
-}
+}''', css)
 
-.pollBox {
-  display: grid;
-  gap: 10px;
-  margin-top: 10px;
-}
 
-.helpText {
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 14px;
-  line-height: 1.5;
-  margin-top: 10px;
-}
-
-.checkRow {
-  color: rgba(255, 255, 255, 0.7);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.checkRow input {
-  accent-color: #fff;
-  height: 16px;
-  min-height: auto;
-  padding: 0;
-  width: auto;
-}
-
-.actionRow,
-.confirmRow {
-  justify-content: space-between;
-}
-
-.confirmRow input {
-  min-width: 0;
-  flex: 1;
-}
-
-.listItem {
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 11px;
-}
-
-.listItem strong {
+# 23. .listItem strong, .listItem p
+css = replace_block(r'\.listItem strong \{[^\}]+\}', '''.listItem strong {
   color: #fff;
   font-size: 14px;
-}
+}''', css)
 
-.listItem p {
+css = replace_block(r'\.listItem p \{[^\}]+\}', '''.listItem p {
   color: rgba(255, 255, 255, 0.5);
   font-size: 13px;
   line-height: 1.45;
-}
+}''', css)
 
-.watchlistGrid {
-  padding: 0;
-}
 
-.spotifyId {
+# 24. .spotifyId
+css = replace_block(r'\.spotifyId \{[^\}]+\}', '''.spotifyId {
   color: rgba(255, 255, 255, 0.42);
   font-family: var(--font-geist-mono), monospace;
   font-size: 11px;
-}
+}''', css)
 
-.emptyState {
-  position: relative;
-  overflow: hidden;
+
+# 25. .emptyState
+css = replace_block(r'\.emptyState \{[^\}]+\}', '''.emptyState {
   border: 1px dashed rgba(255, 255, 255, 0.2);
   border-radius: 18px;
   color: rgba(255, 255, 255, 0.55);
@@ -699,57 +555,27 @@
   gap: 6px;
   padding: 36px 20px;
   text-align: center;
-}
+}''', css)
 
-.emptyState::before {
-  content: "";
-  position: absolute;
-  top: -20px;
-  right: -10px;
-  width: 80px;
-  height: 80px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 22px 22px;
-  transform: rotate(8deg);
-  pointer-events: none;
-}
-
-.emptyStateTitle {
+css = replace_block(r'\.emptyStateTitle \{[^\}]+\}', '''.emptyStateTitle {
   color: rgba(255, 255, 255, 0.86);
   font-family: var(--font-instrument-serif), serif;
   font-style: italic;
   font-weight: 400;
   font-size: 22px;
-}
+}''', css)
 
-.emptyStateHint {
+css = replace_block(r'\.emptyStateHint \{[^\}]+\}', '''.emptyStateHint {
   color: rgba(255, 255, 255, 0.55);
   font-size: 13px;
   line-height: 1.5;
   margin: 0 auto;
   max-width: 320px;
-}
+}''', css)
 
-.settingsLayer {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
-}
 
-.settingsBackdrop {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  background: rgba(0, 0, 0, 0.58);
-  cursor: pointer;
-}
-
-.settingsDrawer {
+# 26. Drawer styles
+css = replace_block(r'\.settingsDrawer \{[^\}]+\}', '''.settingsDrawer {
   position: relative;
   z-index: 1;
   grid-column: 2;
@@ -762,179 +588,66 @@
   box-shadow: -18px 0 60px rgba(0, 0, 0, 0.5);
   display: grid;
   grid-template-rows: auto 1fr;
-}
+}''', css)
 
-.drawerHeader {
+css = replace_block(r'\.drawerHeader \{[^\}]+\}', '''.drawerHeader {
   border-bottom: 1px dashed rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 13px;
+  gap: var(--text-sm);
   padding: 16px;
-}
+}''', css)
 
-
-.drawerKicker {
+css = replace_block(r'\.drawerKicker \{[^\}]+\}', '''.drawerKicker {
   color: rgba(255, 255, 255, 0.5);
   font-family: var(--font-geist-mono), "Fira Mono", monospace;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-}
+}''', css)
 
-.drawerContent {
+css = replace_block(r'\.drawerContent \{[^\}]+\}', '''.drawerContent {
   display: grid;
   align-content: start;
   gap: 16px;
   overflow-y: auto;
   padding: 18px;
-}
+}''', css)
 
-.errorBanner {
+
+# 27. .errorBanner
+css = replace_block(r'\.errorBanner \{[^\}]+\}', '''.errorBanner {
   border: 1px solid rgba(255, 109, 109, 0.38);
   border-radius: 18px;
   background: rgba(255, 109, 109, 0.1);
   color: rgba(255, 214, 214, 0.92);
   padding: 14px 16px;
   font-size: 14px;
-}
+}''', css)
 
-.statPanel {
-  position: relative;
-  min-height: 110px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.statPanel span {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 13px;
-}
-
-.statPanel strong {
-  color: #fff;
-  font-size: 44px;
-  line-height: 1;
-}
-
-.statAccent {
+# 28. .statPanel
+css = replace_block(r'\.statAccent \{[^\}]+\}', '''.statAccent {
   position: absolute;
   top: 14px;
   right: 14px;
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--r-full);
   background: rgba(255, 255, 255, 0.7);
-}
+}''', css)
 
-.skeleton {
+css = replace_block(r'\.skeleton \{[^\}]+\}', '''.skeleton {
   animation: shimmer 1.5s ease-in-out infinite;
   background: rgba(255, 255, 255, 0.06);
-}
+}''', css)
 
-.skeletonRow {
-  min-height: 84px;
-}
 
-.skeletonNumber {
-  border-radius: 10px;
-  height: 54px;
-  width: 80px;
-}
+# Additional fixes to ensure exact properties that could be missed
+css = css.replace('.timelineItem p {\n  color: var(--ink-2);', '.timelineItem p {\n  color: rgba(255, 255, 255, 0.5);')
 
-@media (max-width: 860px) {
-  .utilityBar,
-  .toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
+with open("concert-presale-watcher/apps/web/app/dashboard/dashboard.module.css", "w") as f:
+    f.write(css)
 
-  .utilityIdentity,
-  .utilityActions,
-  .toolbarActions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .sortControl {
-  color: rgba(255, 255, 255, 0.5);
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--font-geist-mono), monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-  .sortControl select {
-    width: 100%;
-  }
-}
-
-@media (max-width: 640px) {
-  .dashboardPage {
-  min-height: 100svh;
-  color: #fff;
-  font-family: var(--font-barlow), system-ui, sans-serif;
-  font-weight: 300;
-  padding: clamp(18px, 3vw, 28px);
-}
-
-  .utilityIdentity,
-  .toolbarActions,
-  .actionRow,
-  .confirmRow {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .utilityActions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .inlineInputs {
-    grid-template-columns: 1fr;
-  }
-
-  .eventCard,
-  .listItem {
-    flex-direction: column;
-  }
-
-  .eventCardTop {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .ticketLink,
-  .primaryButton,
-  .secondaryButton,
-  .dangerButton,
-  .logoutButton {
-    width: 100%;
-  }
-
-  .settingsLayer {
-    grid-template-columns: 1fr;
-  }
-
-  .settingsDrawer {
-  position: relative;
-  z-index: 1;
-  grid-column: 2;
-  height: 100svh;
-  min-width: 0;
-  overflow: hidden;
-  background: rgba(15, 15, 15, 0.92);
-  border-left: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(34px);
-  box-shadow: -18px 0 60px rgba(0, 0, 0, 0.5);
-  display: grid;
-  grid-template-rows: auto 1fr;
-}
-}
+print("Rewriting done.")

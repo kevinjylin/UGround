@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { signOut } from "next-auth/react";
+import { relativeTime } from "../../lib/format";
 import type {
   AlertRecord,
   EventRecord,
@@ -10,13 +12,49 @@ import type {
   WatchArtist,
 } from "../../lib/types";
 import ErrorBanner from "../components/ErrorBanner";
-import StatCard from "../components/StatCard";
-import WatchlistPanel from "../components/WatchlistPanel";
-import WatchlistList from "../components/WatchlistList";
 import EventList from "../components/EventList";
-import AlertList from "../components/AlertList";
-import NotificationSettingsPanel from "../components/NotificationSettingsPanel";
+import FeedToolbar, {
+  type EventFilter,
+  type EventSort,
+} from "../components/FeedToolbar";
+import SettingsDrawer from "../components/SettingsDrawer";
 import styles from "./dashboard.module.css";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const toTimestamp = (value: string | null | undefined): number => {
+  if (!value) return 0;
+
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const latestActivityTime = (
+  event: EventRecord,
+  alertsByEventId: Map<string, AlertRecord[]>,
+): number => {
+  const latestAlertTime = toTimestamp(
+    alertsByEventId.get(event.id)?.[0]?.created_at,
+  );
+
+  return Math.max(
+    latestAlertTime,
+    toTimestamp(event.updated_at),
+    toTimestamp(event.last_seen_at),
+    toTimestamp(event.created_at),
+  );
+};
+
+const changedWithinDay = (
+  event: EventRecord,
+  alertsByEventId: Map<string, AlertRecord[]>,
+): boolean => {
+  const latestAlertAt = toTimestamp(
+    alertsByEventId.get(event.id)?.[0]?.created_at,
+  );
+
+  return latestAlertAt > 0 && Date.now() - latestAlertAt <= DAY_MS;
+};
 
 export default function DashboardPage() {
   const [artists, setArtists] = useState<WatchArtist[]>([]);
@@ -28,11 +66,15 @@ export default function DashboardPage() {
   const [city, setCity] = useState("");
   const [stateRegion, setStateRegion] = useState("");
   const [country, setCountry] = useState("US");
+  const [filter, setFilter] = useState<EventFilter>("all");
+  const [sort, setSort] = useState<EventSort>("recent_change");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [busy, setBusy] = useState(true);
   const [polling, setPolling] = useState(false);
   const [lastPoll, setLastPoll] = useState<PollResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   const refreshAll = async () => {
     setBusy(true);
@@ -90,6 +132,122 @@ export default function DashboardPage() {
   useEffect(() => {
     void refreshAll();
   }, []);
+
+  const alertsByEventId = useMemo(() => {
+    const grouped = new Map<string, AlertRecord[]>();
+
+    for (const alert of alerts) {
+      const existing = grouped.get(alert.event_id) ?? [];
+      existing.push(alert);
+      grouped.set(alert.event_id, existing);
+    }
+
+    for (const eventAlerts of grouped.values()) {
+      eventAlerts.sort(
+        (a, b) => toTimestamp(b.created_at) - toTimestamp(a.created_at),
+      );
+    }
+
+    return grouped;
+  }, [alerts]);
+
+  const filterCounts = useMemo(() => {
+    let onsale = 0;
+    let scheduled = 0;
+    let changedToday = 0;
+
+    for (const event of events) {
+      if (event.status === "onsale") onsale += 1;
+      if (event.status === "scheduled") scheduled += 1;
+      if (changedWithinDay(event, alertsByEventId)) changedToday += 1;
+    }
+
+    return {
+      all: events.length,
+      onsale,
+      scheduled,
+      changed_today: changedToday,
+    };
+  }, [alertsByEventId, events]);
+
+  const filters = useMemo(
+    () => [
+      { id: "all" as const, label: "All", count: filterCounts.all },
+      {
+        id: "onsale" as const,
+        label: "On Sale",
+        count: filterCounts.onsale,
+      },
+      {
+        id: "scheduled" as const,
+        label: "Upcoming",
+        count: filterCounts.scheduled,
+      },
+      {
+        id: "changed_today" as const,
+        label: "Changed Today",
+        count: filterCounts.changed_today,
+      },
+    ],
+    [filterCounts],
+  );
+
+  const filteredSortedEvents = useMemo(() => {
+    const filtered = events.filter((event) => {
+      if (filter === "all") return true;
+      if (filter === "changed_today") {
+        return changedWithinDay(event, alertsByEventId);
+      }
+      return event.status === filter;
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (sort === "date_soonest") {
+        const aTime = a.start_time
+          ? toTimestamp(a.start_time)
+          : Number.POSITIVE_INFINITY;
+        const bTime = b.start_time
+          ? toTimestamp(b.start_time)
+          : Number.POSITIVE_INFINITY;
+        if (aTime !== bTime) return aTime - bTime;
+
+        return (
+          a.artist_name.localeCompare(b.artist_name) ||
+          a.title.localeCompare(b.title)
+        );
+      }
+
+      if (sort === "artist_az") {
+        return (
+          a.artist_name.localeCompare(b.artist_name) ||
+          a.title.localeCompare(b.title)
+        );
+      }
+
+      return (
+        latestActivityTime(b, alertsByEventId) -
+          latestActivityTime(a, alertsByEventId) ||
+        a.artist_name.localeCompare(b.artist_name)
+      );
+    });
+  }, [alertsByEventId, events, filter, sort]);
+
+  const latestPollishTimestamp = useMemo(
+    () =>
+      events.reduce(
+        (latest, event) => Math.max(latest, toTimestamp(event.last_seen_at)),
+        0,
+      ),
+    [events],
+  );
+  const lastPollTimestamp =
+    toTimestamp(lastPoll?.endedAt) || latestPollishTimestamp;
+  const lastPollText =
+    lastPollTimestamp > 0
+      ? `last poll ${relativeTime(new Date(lastPollTimestamp).toISOString())}`
+      : busy
+        ? "loading latest status"
+        : "last poll unavailable";
 
   const addArtist = async (name: string) => {
     setError(null);
@@ -156,6 +314,8 @@ export default function DashboardPage() {
         throw new Error(json.error ?? "Poll run failed");
       setLastPoll(json.result);
       await refreshAll();
+    } catch (caught) {
+      setError((caught as Error).message);
     } finally {
       setPolling(false);
     }
@@ -220,9 +380,24 @@ export default function DashboardPage() {
   return (
     <div id="studio-dashboard" className={styles.dashboardPage}>
       <div className={styles.shell} aria-busy={busy}>
-        <header className={styles.masthead}>
-          <div className={styles.mastheadTop}>
-            <span className={styles.brand}>UGround</span>
+        <header className={styles.utilityBar}>
+          <div className={styles.utilityIdentity}>
+            <Link href="/" className={styles.brand}>UGround</Link>
+            <div className={styles.utilityStats} aria-live="polite">
+              <span>{events.length} events</span>
+              <span>{filterCounts.onsale} on sale now</span>
+              <span>{artists.length} artists</span>
+              <span>{lastPollText}</span>
+            </div>
+          </div>
+          <div className={styles.utilityActions}>
+            <button
+              type="button"
+              className={`${styles.secondaryButton} ${styles.buttonSmall}`}
+              onClick={() => setSettingsOpen(true)}
+            >
+              Settings
+            </button>
             <button
               type="button"
               className={`${styles.logoutButton} ${styles.buttonSmall}`}
@@ -231,98 +406,69 @@ export default function DashboardPage() {
               Log Out
             </button>
           </div>
-          <div className={styles.mastheadCopy}>
-            <p className={styles.eyebrow}>Live watch desk</p>
-            <h1 className={styles.mastheadTitle}>dont miss out.</h1>
-            <p>Follow artists. Get alerts the moment presales drop.</p>
-            <hr className={styles.mastheadRule} />
-          </div>
         </header>
 
         {error ? (
           <ErrorBanner message={error} className={styles.errorBanner} />
         ) : null}
 
-        <section className={styles.statsRow}>
-          <StatCard
-            label="Followed Artists"
-            value={artists.length}
-            loading={busy}
-            accent="#ffffff"
-          />
-          <StatCard
-            label="Tracked Events"
-            value={events.length}
-            loading={busy}
-            accent="#a8f1bd"
-          />
-          <StatCard
-            label="Recent Alerts"
-            value={alerts.length}
-            loading={busy}
-            accent="#ffe0a3"
-          />
-        </section>
-
-        <div className={styles.mainGrid}>
-          <EventList events={events} loading={busy} />
-          <div className={styles.sideStack}>
-            <AlertList alerts={alerts} loading={busy} />
-            <WatchlistPanel
-              busy={busy}
-              city={city}
-              stateRegion={stateRegion}
-              country={country}
-              onCityChange={setCity}
-              onStateChange={setStateRegion}
-              onCountryChange={setCountry}
-              onAdd={addArtist}
-              onImportSpotify={importFromSpotify}
-              onPoll={runPoll}
-              polling={polling}
-              lastPoll={lastPoll}
-            />
-          </div>
-        </div>
-
-        <NotificationSettingsPanel
-          settings={notificationSettings}
-          busy={busy}
-          onSave={saveNotificationSettings}
-          onTestDiscord={() =>
-            runNotificationAction("/api/notification-settings/test-discord")
-          }
-          onSendEmailConfirmation={() =>
-            runNotificationAction(
-              "/api/notification-settings/send-email-confirmation",
-            )
-          }
-          onSendSmsConfirmation={() =>
-            runNotificationAction(
-              "/api/notification-settings/send-sms-confirmation",
-            )
-          }
-          onConfirmSms={(code) =>
-            runNotificationAction("/api/notification-settings/confirm-sms", {
-              code,
-            })
-          }
+        <FeedToolbar
+          filter={filter}
+          sort={sort}
+          filters={filters}
+          onFilterChange={setFilter}
+          onSortChange={setSort}
+          onRefresh={() => void runPoll("")}
+          refreshing={polling}
+          disabled={busy}
         />
 
-        <details className={styles.watchlistDrawer}>
-          <summary className={styles.watchlistDrawerSummary}>
-            <span>Followed Artists</span>
-            {!busy && (
-              <span className={styles.drawerCount}>{artists.length}</span>
-            )}
-          </summary>
-          <WatchlistList
-            artists={artists}
-            onRemove={removeArtist}
-            loading={busy}
-          />
-        </details>
+        <EventList
+          events={filteredSortedEvents}
+          alertsByEventId={alertsByEventId}
+          totalEvents={events.length}
+          loading={busy}
+        />
       </div>
+
+      <SettingsDrawer
+        open={settingsOpen}
+        artists={artists}
+        busy={busy}
+        city={city}
+        stateRegion={stateRegion}
+        country={country}
+        notificationSettings={notificationSettings}
+        polling={polling}
+        lastPoll={lastPoll}
+        onClose={closeSettings}
+        onCityChange={setCity}
+        onStateChange={setStateRegion}
+        onCountryChange={setCountry}
+        onAddArtist={addArtist}
+        onRemoveArtist={removeArtist}
+        onImportSpotify={importFromSpotify}
+        onPoll={runPoll}
+        onSaveNotificationSettings={saveNotificationSettings}
+        onTestDiscord={() =>
+          runNotificationAction("/api/notification-settings/test-discord")
+        }
+        onSendEmailConfirmation={() =>
+          runNotificationAction(
+            "/api/notification-settings/send-email-confirmation",
+          )
+        }
+        onSendSmsConfirmation={() =>
+          runNotificationAction(
+            "/api/notification-settings/send-sms-confirmation",
+          )
+        }
+        onConfirmSms={(code) =>
+          runNotificationAction("/api/notification-settings/confirm-sms", {
+            code,
+          })
+        }
+      />
     </div>
   );
 }
