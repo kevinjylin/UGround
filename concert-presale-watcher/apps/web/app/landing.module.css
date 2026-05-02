@@ -456,3 +456,57 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Masthead — responsive ────────────────────────────────────────────────── */
+.navDesktop {
+  display: flex;
+}
+.navMobileBtn {
+  display: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+.navMobilePanel {
+  position: absolute;
+  top: 64px;
+  left: 16px;
+  right: 16px;
+  border-radius: 18px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  animation: navMobileFade 160ms ease-out;
+}
+@keyframes navMobileFade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.navMobileLink {
+  padding: 14px 18px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.92);
+  text-decoration: none;
+  font-weight: 400;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: block;
+}
+.navMobileLink:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 768px) {
+  .navDesktop {
+    display: none;
+  }
+  .navMobileBtn {
+    display: flex;
+  }
+}

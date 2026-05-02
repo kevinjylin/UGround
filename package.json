@@ -1,5 +1,5 @@
 {
-  "name": "concert-track",
+  "name": "uground",
   "private": true,
   "description": "Repository root. Implementation lives in concert-presale-watcher/.",
   "packageManager": "npm@11.7.0",

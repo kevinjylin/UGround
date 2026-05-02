@@ -70,6 +70,20 @@ function ListIcon({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+function MenuIcon({ open, size = 18 }: { open: boolean; size?: number }) {
+  return open ? (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  ) : (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <line x1="4" y1="7" x2="20" y2="7" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="17" x2="20" y2="17" />
+    </svg>
+  );
+}
 
 // ── Animation primitives ────────────────────────────────────────────────────
 interface BlurTextProps {
@@ -433,11 +447,24 @@ function Masthead() {
     ["Sources", "#sources"],
     ["Numbers", "#numbers"],
   ];
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
+  const closeMenu = () => setMenuOpen(false);
+
   return (
     <header
       style={{ position: "fixed", top: 16, left: 0, right: 0, zIndex: 50, padding: "0 32px" }}
     >
-      <div className={styles.shell} style={{ padding: 0 }}>
+      <div className={styles.shell} style={{ padding: 0, position: "relative" }}>
         <div
           style={{
             display: "flex",
@@ -468,11 +495,10 @@ function Masthead() {
           </div>
 
           <nav
-            className={styles.liquidGlass}
+            className={`${styles.liquidGlass} ${styles.navDesktop}`}
             style={{
               borderRadius: 999,
               padding: "6px 8px",
-              display: "flex",
               alignItems: "center",
               gap: 2,
             }}
@@ -513,8 +539,41 @@ function Masthead() {
             </Link>
           </nav>
 
-          <div style={{ width: 44 }} />
+          <button
+            type="button"
+            className={`${styles.liquidGlass} ${styles.navMobileBtn}`}
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav-panel"
+            aria-label="Toggle menu"
+          >
+            <MenuIcon open={menuOpen} />
+          </button>
         </div>
+
+        {menuOpen && (
+          <div
+            id="mobile-nav-panel"
+            className={`${styles.liquidGlassStrong} ${styles.navMobilePanel}`}
+          >
+            {links.map(([label, href]) => (
+              <a
+                key={label}
+                href={href}
+                className={styles.navMobileLink}
+                onClick={closeMenu}
+              >
+                {label}
+              </a>
+            ))}
+            <Link href="/login" className={styles.navMobileLink} onClick={closeMenu}>
+              Sign in
+            </Link>
+            <Link href="/signup" className={styles.navMobileLink} onClick={closeMenu}>
+              Start watching
+            </Link>
+          </div>
+        )}
       </div>
     </header>
   );
