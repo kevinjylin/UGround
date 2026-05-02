@@ -2,4 +2,4 @@
 
 www.uground.app
 
-never miss a presale
+stay in the loop & never miss a concert again
