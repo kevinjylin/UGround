@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type {
   NotificationSettingsResponse,
   PollResult,
@@ -10,6 +10,13 @@ import NotificationSettingsPanel from "./NotificationSettingsPanel";
 import WatchlistList from "./WatchlistList";
 import WatchlistPanel from "./WatchlistPanel";
 import styles from "../dashboard/dashboard.module.css";
+
+type SettingsTab = "watchlist" | "notifications";
+
+const settingsTabs: { id: SettingsTab; label: string }[] = [
+  { id: "watchlist", label: "Watchlist" },
+  { id: "notifications", label: "Notifications" },
+];
 
 const focusableSelector = [
   "a[href]",
@@ -23,7 +30,9 @@ const focusableSelector = [
 const getFocusable = (root: HTMLElement | null): HTMLElement[] => {
   if (!root) return [];
 
-  return Array.from(root.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(focusableSelector),
+  ).filter(
     (element) =>
       !element.hasAttribute("disabled") &&
       element.getAttribute("aria-hidden") !== "true",
@@ -87,9 +96,13 @@ export default function SettingsDrawer({
   onConfirmSms,
 }: SettingsDrawerProps) {
   const drawerRef = useRef<HTMLElement>(null);
+  const tabBaseId = useId();
+  const [activeTab, setActiveTab] = useState<SettingsTab>("watchlist");
 
   useEffect(() => {
     if (!open) return;
+
+    setActiveTab("watchlist");
 
     const previousFocus =
       document.activeElement instanceof HTMLElement
@@ -141,6 +154,38 @@ export default function SettingsDrawer({
     }
   };
 
+  const getTabId = (tab: SettingsTab) => `${tabBaseId}-${tab}-tab`;
+  const getPanelId = (tab: SettingsTab) => `${tabBaseId}-${tab}-panel`;
+
+  const focusTab = (tab: SettingsTab) => {
+    window.requestAnimationFrame(() => {
+      document.getElementById(getTabId(tab))?.focus();
+    });
+  };
+
+  const handleTabKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    tab: SettingsTab,
+  ) => {
+    const currentIndex = settingsTabs.findIndex((item) => item.id === tab);
+    const lastIndex = settingsTabs.length - 1;
+    let nextTab: SettingsTab | null = null;
+
+    if (event.key === "ArrowRight") {
+      nextTab =
+        settingsTabs[currentIndex === lastIndex ? 0 : currentIndex + 1]!.id;
+    } else if (event.key === "ArrowLeft") {
+      nextTab =
+        settingsTabs[currentIndex === 0 ? lastIndex : currentIndex - 1]!.id;
+    }
+
+    if (!nextTab) return;
+
+    event.preventDefault();
+    setActiveTab(nextTab);
+    focusTab(nextTab);
+  };
+
   if (!open) return null;
 
   return (
@@ -175,39 +220,93 @@ export default function SettingsDrawer({
         </header>
 
         <div className={styles.drawerContent}>
-          <WatchlistPanel
-            busy={busy}
-            city={city}
-            stateRegion={stateRegion}
-            country={country}
-            onCityChange={onCityChange}
-            onStateChange={onStateChange}
-            onCountryChange={onCountryChange}
-            onAdd={onAddArtist}
-            onImportSpotify={onImportSpotify}
-            onPoll={onPoll}
-            polling={polling}
-            lastPoll={lastPoll}
-          />
+          <div
+            className={styles.tabStrip}
+            role="tablist"
+            aria-label="Settings sections"
+          >
+            {settingsTabs.map((tab) => {
+              const selected = activeTab === tab.id;
 
-          <section className={styles.panel}>
-            <h2>Followed Artists</h2>
-            <WatchlistList
-              artists={artists}
-              onRemove={onRemoveArtist}
-              loading={busy}
-            />
-          </section>
+              return (
+                <button
+                  key={tab.id}
+                  id={getTabId(tab.id)}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls={getPanelId(tab.id)}
+                  tabIndex={selected ? 0 : -1}
+                  className={`${styles.tabButton} ${
+                    selected ? styles.tabButtonActive : ""
+                  }`}
+                  onClick={() => setActiveTab(tab.id)}
+                  onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-          <NotificationSettingsPanel
-            settings={notificationSettings}
-            busy={busy}
-            onSave={onSaveNotificationSettings}
-            onTestDiscord={onTestDiscord}
-            onSendEmailConfirmation={onSendEmailConfirmation}
-            onSendSmsConfirmation={onSendSmsConfirmation}
-            onConfirmSms={onConfirmSms}
-          />
+          {activeTab === "watchlist" ? (
+            <section
+              id={getPanelId("watchlist")}
+              className={styles.tabPanel}
+              role="tabpanel"
+              aria-labelledby={getTabId("watchlist")}
+              tabIndex={0}
+            >
+              <WatchlistPanel
+                busy={busy}
+                city={city}
+                stateRegion={stateRegion}
+                country={country}
+                onCityChange={onCityChange}
+                onStateChange={onStateChange}
+                onCountryChange={onCountryChange}
+                onAdd={onAddArtist}
+                onImportSpotify={onImportSpotify}
+                onPoll={onPoll}
+                polling={polling}
+                lastPoll={lastPoll}
+              />
+
+              <section
+                className={`${styles.panel} ${styles.watchlistTabList}`}
+                aria-labelledby={`${tabBaseId}-followed-heading`}
+              >
+                <div className={styles.watchlistListHeader}>
+                  <h2 id={`${tabBaseId}-followed-heading`}>
+                    Followed Artists ({artists.length})
+                  </h2>
+                </div>
+                <WatchlistList
+                  artists={artists}
+                  onRemove={onRemoveArtist}
+                  loading={busy}
+                />
+              </section>
+            </section>
+          ) : (
+            <section
+              id={getPanelId("notifications")}
+              className={styles.tabPanel}
+              role="tabpanel"
+              aria-labelledby={getTabId("notifications")}
+              tabIndex={0}
+            >
+              <NotificationSettingsPanel
+                settings={notificationSettings}
+                busy={busy}
+                onSave={onSaveNotificationSettings}
+                onTestDiscord={onTestDiscord}
+                onSendEmailConfirmation={onSendEmailConfirmation}
+                onSendSmsConfirmation={onSendSmsConfirmation}
+                onConfirmSms={onConfirmSms}
+              />
+            </section>
+          )}
         </div>
       </aside>
     </div>
