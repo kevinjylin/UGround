@@ -1235,7 +1235,7 @@
   inset: 0;
   border: 0;
   background: rgba(0, 0, 0, 0.58);
-  cursor: pointer;
+  cursor: default;
 }
 
 .settingsBackdrop:hover {
