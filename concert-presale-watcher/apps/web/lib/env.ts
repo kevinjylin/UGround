@@ -8,7 +8,8 @@ const readEnv = (key: string): string | undefined => {
 };
 
 export const env = {
-  supabaseUrl: readEnv("SUPABASE_URL"),
+  supabaseUrl: readEnv("NEXT_PUBLIC_SUPABASE_URL") ?? readEnv("SUPABASE_URL"),
+  supabaseAnonKey: readEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceKey: readEnv("SUPABASE_SERVICE_ROLE_KEY"),
   ticketmasterApiKey: readEnv("TICKETMASTER_API_KEY"),
   eventbriteToken: readEnv("EVENTBRITE_PRIVATE_TOKEN"),
@@ -23,31 +24,32 @@ export const env = {
   twilioAccountSid: readEnv("TWILIO_ACCOUNT_SID"),
   twilioAuthToken: readEnv("TWILIO_AUTH_TOKEN"),
   twilioFromPhone: readEnv("TWILIO_FROM_PHONE"),
-  authSecret: readEnv("AUTH_SECRET"),
-  nextAuthUrl: readEnv("NEXTAUTH_URL"),
-  authUsername: readEnv("AUTH_USERNAME"),
-  authPassword: readEnv("AUTH_PASSWORD"),
-  googleClientId: readEnv("GOOGLE_CLIENT_ID"),
-  googleClientSecret: readEnv("GOOGLE_CLIENT_SECRET"),
 };
 
 export const hasSupabaseConfig = (): boolean => {
   return Boolean(env.supabaseUrl && env.supabaseServiceKey);
 };
 
-export const hasExplicitAuthConfig = (): boolean => {
-  return Boolean(
-    (env.authUsername && env.authPassword) ||
-    (env.googleClientId && env.googleClientSecret),
-  );
+export const hasSupabaseAuthConfig = (): boolean => {
+  return Boolean(env.supabaseUrl && env.supabaseAnonKey);
 };
 
 export const isAuthEnabled = (): boolean => {
-  return hasExplicitAuthConfig();
+  return hasSupabaseAuthConfig();
 };
 
 export const assertSupabaseConfig = (): void => {
   if (!hasSupabaseConfig()) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    );
+  }
+};
+
+export const assertSupabaseAuthConfig = (): void => {
+  if (!hasSupabaseAuthConfig()) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    );
   }
 };

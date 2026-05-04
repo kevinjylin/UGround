@@ -3,6 +3,7 @@
 Watch-and-alert site for artists.
 
 This repo is now set up as:
+
 - `apps/web`: Next.js dashboard + API routes
 - `apps/worker`: polling worker (calls `POST /api/poll` on an interval)
 - `database/schema.sql`: Postgres schema for artists/events/snapshots/alerts
@@ -19,7 +20,8 @@ This repo is now set up as:
 
 1. Create a Supabase project.
 2. Run [`database/schema.sql`](./database/schema.sql) in SQL editor.
-3. Copy `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` into `apps/web/.env.local`.
+3. Copy `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` into `apps/web/.env.local`.
+4. Run [`database/supabase-auth-cutover.sql`](./database/supabase-auth-cutover.sql) only when migrating an existing custom-auth database with no users to preserve.
 
 ## Environment
 
@@ -31,6 +33,7 @@ cp apps/worker/.env.example apps/worker/.env
 ```
 
 Set whichever integrations you want:
+
 - Ticketmaster: `TICKETMASTER_API_KEY`
 - Eventbrite: `EVENTBRITE_PRIVATE_TOKEN`
 - Spotify import: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`
@@ -38,22 +41,18 @@ Set whichever integrations you want:
 - SMS alerts: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_PHONE`
 - Per-user alert destinations: users enter Discord webhooks, email addresses, and phone numbers in the dashboard.
 - Alert settings encryption: `ALERT_SETTINGS_ENCRYPTION_KEY` (generate with `openssl rand -base64 32`)
+- Supabase Auth: enable Email and Google in the Supabase dashboard. Google client id/secret live in Supabase, not this app.
 
 Optional poll protection:
+
 - Set `POLL_SECRET` in web and worker.
 - Set `CRON_SECRET` in Vercel if you use the built-in scheduled poll.
 
-Login gate (recommended for Vercel):
-- `AUTH_SECRET`: random secret for Auth.js session signing
-- `NEXTAUTH_URL`: your app URL (for local: `http://localhost:3000`)
-- `AUTH_USERNAME`: credentials username
-- `AUTH_PASSWORD`: credentials password
-- `GOOGLE_CLIENT_ID`: Google OAuth client ID
-- `GOOGLE_CLIENT_SECRET`: Google OAuth client secret
+Supabase Auth redirect URLs:
 
-Google OAuth callback URLs:
-- Local: `http://localhost:3000/api/auth/callback/google`
-- Production: `https://<your-vercel-domain>/api/auth/callback/google`
+- Local: `http://localhost:3000/auth/callback`
+- Production: `https://<your-vercel-domain>/auth/callback`
+- Google Cloud OAuth should use Supabase's callback URL: `https://<your-project>.supabase.co/auth/v1/callback`
 
 ## Run
 
@@ -94,15 +93,14 @@ Open `http://localhost:3000`.
 1. Import this repo into Vercel.
 2. Set the Vercel project **Root Directory** to `concert-presale-watcher/apps/web`.
 3. Add environment variables in Vercel Project Settings:
-   - Required: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-   - Recommended auth: `AUTH_SECRET`, `NEXTAUTH_URL`, `AUTH_USERNAME`, `AUTH_PASSWORD`
-   - Optional Google sign-in: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+   - Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
    - Optional integrations: Ticketmaster/Eventbrite/Spotify/Resend/Twilio/POLL_SECRET/CRON_SECRET
    - Required for user alert destinations: `ALERT_SETTINGS_ENCRYPTION_KEY`
 4. Deploy.
 
 Notes:
-- If auth vars are set, Auth.js protects the site and API with a `/login` page.
+
+- Supabase Auth protects the site and API with a `/login` page.
 - `/api/poll` still works for your worker/cron when it sends `x-poll-secret` matching `POLL_SECRET`.
 - Vercel runs `GET /api/cron/poll` once daily via `apps/web/vercel.json`. Set `CRON_SECRET` so Vercel sends the matching `Authorization: Bearer ...` header; it can be the same value as `POLL_SECRET`.
 - The cron schedule is `0 4 * * *`, targeting 9 PM Los Angeles time during daylight saving time. Use `0 5 * * *` during standard time, or move polling to a timezone-aware scheduler.

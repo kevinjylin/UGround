@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 import { relativeTime } from "../../lib/format";
 import type {
   AlertRecord,
@@ -57,6 +58,7 @@ const changedWithinDay = (
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [artists, setArtists] = useState<WatchArtist[]>([]);
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
@@ -377,12 +379,21 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSignOut = async () => {
+    const supabase = createSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  };
+
   return (
     <div id="studio-dashboard" className={styles.dashboardPage}>
       <div className={styles.shell} aria-busy={busy}>
         <header className={styles.utilityBar}>
           <div className={styles.utilityIdentity}>
-            <Link href="/" className={styles.brand}>UGround</Link>
+            <Link href="/" className={styles.brand}>
+              UGround
+            </Link>
             <div className={styles.utilityStats} aria-live="polite">
               <span>{events.length} events</span>
               <span>{filterCounts.onsale} on sale now</span>
@@ -401,7 +412,7 @@ export default function DashboardPage() {
             <button
               type="button"
               className={`${styles.logoutButton} ${styles.buttonSmall}`}
-              onClick={() => void signOut({ callbackUrl: "/login" })}
+              onClick={() => void handleSignOut()}
             >
               Log Out
             </button>

@@ -1,4 +1,3 @@
-import { env } from "./env";
 import {
   createEmailConfirmationToken,
   createExpiry,
@@ -36,7 +35,8 @@ export interface ResolvedNotificationSettings {
   smsConfirmed: boolean;
 }
 
-const discordWebhookPattern = /^https:\/\/(?:discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/;
+const discordWebhookPattern =
+  /^https:\/\/(?:discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phonePattern = /^\+[1-9]\d{7,14}$/;
 
@@ -100,7 +100,9 @@ const maskPhone = (value: string | null): string | null => {
   return `...${value.slice(-4)}`;
 };
 
-const decryptSettings = (record: NotificationSettingsRecord | null): ResolvedNotificationSettings => {
+const decryptSettings = (
+  record: NotificationSettingsRecord | null,
+): ResolvedNotificationSettings => {
   return {
     discordWebhook: decryptSecret(record?.discord_webhook_encrypted ?? null),
     email: decryptSecret(record?.email_encrypted ?? null),
@@ -146,7 +148,9 @@ export const getResolvedNotificationSettings = async (
 export const getNotificationSettingsResponse = async (
   userId: string,
 ): Promise<NotificationSettingsResponse> => {
-  return toNotificationSettingsResponse(await getResolvedNotificationSettings(userId));
+  return toNotificationSettingsResponse(
+    await getResolvedNotificationSettings(userId),
+  );
 };
 
 export const updateNotificationSettings = async (
@@ -263,7 +267,10 @@ export const confirmEmailToken = async (
   token: string,
 ): Promise<NotificationSettingsResponse> => {
   const record = await getNotificationSettings(userId);
-  if (!record?.email_confirmation_hash || !record.email_confirmation_expires_at) {
+  if (
+    !record?.email_confirmation_hash ||
+    !record.email_confirmation_expires_at
+  ) {
     throw new Error("No email confirmation is pending.");
   }
 
@@ -338,5 +345,5 @@ export const confirmSmsCode = async (
 };
 
 export const getBaseAppUrl = (request: Request): string => {
-  return env.nextAuthUrl ?? new URL(request.url).origin;
+  return new URL(request.url).origin;
 };

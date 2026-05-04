@@ -4,7 +4,13 @@ interface IntegrationsPanelProps {
   health: HealthResponse | null;
 }
 
-function StatusRow({ label, configured }: { label: string; configured: boolean }) {
+function StatusRow({
+  label,
+  configured,
+}: {
+  label: string;
+  configured: boolean;
+}) {
   return (
     <p className="statusRow">
       <span
@@ -26,26 +32,48 @@ export default function IntegrationsPanel({ health }: IntegrationsPanelProps) {
           <fieldset className="fieldsetSection">
             <legend>Data Sources</legend>
             <div className="healthGrid">
-              <StatusRow label="Database" configured={health.databaseConfigured} />
-              <StatusRow label="Ticketmaster" configured={health.sourceKeysConfigured.ticketmaster} />
-              <StatusRow label="Eventbrite" configured={health.sourceKeysConfigured.eventbrite} />
-              <StatusRow label="Spotify" configured={health.sourceKeysConfigured.spotify} />
+              <StatusRow
+                label="Database"
+                configured={health.databaseConfigured}
+              />
+              <StatusRow
+                label="Ticketmaster"
+                configured={health.sourceKeysConfigured.ticketmaster}
+              />
+              <StatusRow
+                label="Eventbrite"
+                configured={health.sourceKeysConfigured.eventbrite}
+              />
+              <StatusRow
+                label="Spotify"
+                configured={health.sourceKeysConfigured.spotify}
+              />
             </div>
           </fieldset>
           <fieldset className="fieldsetSection">
             <legend>Authentication</legend>
             <div className="healthGrid">
-              <StatusRow label="Credentials" configured={health.authConfigured.credentials} />
-              <StatusRow label="Google OAuth" configured={health.authConfigured.google} />
-              <StatusRow label="Auth secret" configured={health.authConfigured.secret} />
+              <StatusRow
+                label="Supabase Auth"
+                configured={health.authConfigured.supabase}
+              />
             </div>
           </fieldset>
           <fieldset className="fieldsetSection">
             <legend>Alert Providers</legend>
             <div className="healthGrid">
-              <StatusRow label="Discord webhooks" configured={health.alertChannelsConfigured.discord} />
-              <StatusRow label="Email provider" configured={health.alertChannelsConfigured.email} />
-              <StatusRow label="SMS provider" configured={health.alertChannelsConfigured.sms} />
+              <StatusRow
+                label="Discord webhooks"
+                configured={health.alertChannelsConfigured.discord}
+              />
+              <StatusRow
+                label="Email provider"
+                configured={health.alertChannelsConfigured.email}
+              />
+              <StatusRow
+                label="SMS provider"
+                configured={health.alertChannelsConfigured.sms}
+              />
             </div>
           </fieldset>
         </div>

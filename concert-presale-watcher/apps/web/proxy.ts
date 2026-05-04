@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { createServerClient } from "@supabase/ssr";
 import { env, isAuthEnabled } from "./lib/env";
 import { isPollRequestAuthorized } from "./lib/pollAuth";
 
 const publicPaths = new Set([
   "/",
+  "/auth/callback",
   "/login",
   "/signup",
   "/forgot-password",
   "/reset-password",
   "/api/health",
-  "/api/signup",
 ]);
 
 const isStaticAsset = (pathname: string): boolean => {
@@ -27,31 +27,30 @@ const isStaticAsset = (pathname: string): boolean => {
   );
 };
 
-export async function proxy(request: NextRequest) {
-  if (!isAuthEnabled()) {
-    return NextResponse.next();
-  }
+const attachAuthCookies = (
+  source: NextResponse,
+  target: NextResponse,
+): NextResponse => {
+  source.cookies.getAll().forEach((cookie) => {
+    target.cookies.set(cookie.name, cookie.value, cookie);
+  });
 
-  const { pathname } = request.nextUrl;
-
-  if (
-    isStaticAsset(pathname) ||
-    pathname.startsWith("/api/auth") ||
-    publicPaths.has(pathname)
-  ) {
-    if ((pathname === "/login" || pathname === "/signup") && isAuthEnabled()) {
-      const token = await getToken({
-        req: request,
-        secret: env.authSecret,
-      });
-
-      if (token) {
-        return NextResponse.redirect(new URL("/dashboard", request.url));
-      }
+  source.headers.forEach((value, key) => {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey !== "set-cookie" &&
+      normalizedKey !== "x-middleware-next"
+    ) {
+      target.headers.set(key, value);
     }
+  });
 
-    return NextResponse.next();
-  }
+  return target;
+};
+
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isPublicPath = publicPaths.has(pathname);
 
   if (
     (pathname === "/api/poll" || pathname === "/api/cron/poll") &&
@@ -60,15 +59,74 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({
-    req: request,
-    secret: env.authSecret,
+  if (isStaticAsset(pathname)) {
+    return NextResponse.next();
+  }
+
+  if (!isAuthEnabled()) {
+    if (isPublicPath) {
+      return NextResponse.next();
+    }
+
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  let response = NextResponse.next({
+    request,
   });
 
-  const isAuthenticated = Boolean(token);
+  const supabase = createServerClient(
+    env.supabaseUrl as string,
+    env.supabaseAnonKey as string,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet, headers) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
 
-  if (isAuthenticated) {
-    return NextResponse.next();
+          response = NextResponse.next({
+            request,
+          });
+
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
+
+          Object.entries(headers).forEach(([key, value]) => {
+            response.headers.set(key, value);
+          });
+        },
+      },
+    },
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if ((pathname === "/login" || pathname === "/signup") && user) {
+    return attachAuthCookies(
+      response,
+      NextResponse.redirect(new URL("/dashboard", request.url)),
+    );
+  }
+
+  if (isPublicPath) {
+    return response;
+  }
+
+  if (user) {
+    return response;
   }
 
   if (pathname.startsWith("/api/")) {
@@ -77,7 +135,7 @@ export async function proxy(request: NextRequest) {
 
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
-  return NextResponse.redirect(loginUrl);
+  return attachAuthCookies(response, NextResponse.redirect(loginUrl));
 }
 
 export const config = {

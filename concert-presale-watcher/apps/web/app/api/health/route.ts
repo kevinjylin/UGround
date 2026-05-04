@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { env, hasSupabaseConfig } from "../../../lib/env";
+import {
+  env,
+  hasSupabaseAuthConfig,
+  hasSupabaseConfig,
+} from "../../../lib/env";
 
 export const runtime = "nodejs";
 
@@ -13,9 +17,7 @@ export async function GET() {
       spotify: Boolean(env.spotifyClientId && env.spotifyClientSecret),
     },
     authConfigured: {
-      credentials: hasSupabaseConfig() || Boolean(env.authUsername && env.authPassword),
-      google: Boolean(env.googleClientId && env.googleClientSecret),
-      secret: Boolean(env.authSecret),
+      supabase: hasSupabaseAuthConfig(),
     },
     alertChannelsConfigured: {
       discord: true,
