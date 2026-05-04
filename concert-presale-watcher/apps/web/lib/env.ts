@@ -8,7 +8,7 @@ const readEnv = (key: string): string | undefined => {
 };
 
 export const env = {
-  supabaseUrl: readEnv("NEXT_PUBLIC_SUPABASE_URL") ?? readEnv("SUPABASE_URL"),
+  supabaseUrl: readEnv("NEXT_PUBLIC_SUPABASE_URL"),
   supabaseAnonKey: readEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceKey: readEnv("SUPABASE_SERVICE_ROLE_KEY"),
   ticketmasterApiKey: readEnv("TICKETMASTER_API_KEY"),
