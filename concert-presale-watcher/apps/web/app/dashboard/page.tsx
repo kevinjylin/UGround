@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { relativeTime } from "../../lib/format";
 import type {
@@ -17,10 +16,14 @@ import FeedToolbar, {
   type EventFilter,
   type EventSort,
 } from "../components/FeedToolbar";
+import OnSaleHero from "../components/OnSaleHero";
 import SettingsDrawer from "../components/SettingsDrawer";
+import Sidebar from "../components/Sidebar";
+import TopBar from "../components/TopBar";
 import styles from "./dashboard.module.css";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+type SettingsTab = "watchlist" | "notifications";
 
 const toTimestamp = (value: string | null | undefined): number => {
   if (!value) return 0;
@@ -68,13 +71,17 @@ export default function DashboardPage() {
   const [country, setCountry] = useState("US");
   const [filter, setFilter] = useState<EventFilter>("all");
   const [sort, setSort] = useState<EventSort>("recent_change");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<false | SettingsTab>(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [busy, setBusy] = useState(true);
   const [polling, setPolling] = useState(false);
   const [lastPoll, setLastPoll] = useState<PollResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const openSettings = useCallback((tab: SettingsTab) => {
+    setSettingsOpen(tab);
+  }, []);
 
   const refreshAll = async () => {
     setBusy(true);
@@ -179,14 +186,14 @@ export default function DashboardPage() {
         count: filterCounts.onsale,
       },
       {
-        id: "scheduled" as const,
-        label: "Upcoming",
-        count: filterCounts.scheduled,
-      },
-      {
         id: "changed_today" as const,
         label: "Changed Today",
         count: filterCounts.changed_today,
+      },
+      {
+        id: "scheduled" as const,
+        label: "Upcoming",
+        count: filterCounts.scheduled,
       },
     ],
     [filterCounts],
@@ -231,6 +238,20 @@ export default function DashboardPage() {
       );
     });
   }, [alertsByEventId, events, filter, sort]);
+
+  const onSaleEvents = useMemo(
+    () =>
+      events
+        .filter((event) => event.status === "onsale")
+        .sort(
+          (a, b) =>
+            latestActivityTime(b, alertsByEventId) -
+              latestActivityTime(a, alertsByEventId) ||
+            a.artist_name.localeCompare(b.artist_name),
+        )
+        .slice(0, 6),
+    [alertsByEventId, events],
+  );
 
   const latestPollishTimestamp = useMemo(
     () =>
@@ -379,60 +400,52 @@ export default function DashboardPage() {
 
   return (
     <div id="studio-dashboard" className={styles.dashboardPage}>
-      <div className={styles.shell} aria-busy={busy}>
-        <header className={styles.utilityBar}>
-          <div className={styles.utilityIdentity}>
-            <Link href="/" className={styles.brand}>UGround</Link>
-            <div className={styles.utilityStats} aria-live="polite">
-              <span>{events.length} events</span>
-              <span>{filterCounts.onsale} on sale now</span>
-              <span>{artists.length} artists</span>
-              <span>{lastPollText}</span>
-            </div>
-          </div>
-          <div className={styles.utilityActions}>
-            <button
-              type="button"
-              className={`${styles.secondaryButton} ${styles.buttonSmall}`}
-              onClick={() => setSettingsOpen(true)}
-            >
-              Settings
-            </button>
-            <button
-              type="button"
-              className={`${styles.logoutButton} ${styles.buttonSmall}`}
-              onClick={() => void signOut({ callbackUrl: "/login" })}
-            >
-              Log Out
-            </button>
-          </div>
-        </header>
-
-        {error ? (
-          <ErrorBanner message={error} className={styles.errorBanner} />
-        ) : null}
-
-        <FeedToolbar
-          filter={filter}
-          sort={sort}
-          filters={filters}
-          onFilterChange={setFilter}
-          onSortChange={setSort}
-          onRefresh={() => void runPoll("")}
-          refreshing={polling}
-          disabled={busy}
+      <a href="#event-feed" className={styles.skipLink}>
+        Skip to event feed
+      </a>
+      <div className={styles.layout}>
+        <Sidebar
+          mobileOpen={sidebarOpen}
+          onCloseMobile={() => setSidebarOpen(false)}
+          onOpenSettings={openSettings}
+          onLogout={() => void signOut({ callbackUrl: "/login" })}
         />
 
-        <EventList
-          events={filteredSortedEvents}
-          alertsByEventId={alertsByEventId}
-          totalEvents={events.length}
-          loading={busy}
-        />
+        <main className={styles.mainColumn} aria-busy={busy}>
+          <TopBar
+            lastPollText={lastPollText}
+            busy={busy}
+            polling={polling}
+            onOpenMenu={() => setSidebarOpen(true)}
+            onRefresh={() => void runPoll("")}
+          />
+
+          {error ? (
+            <ErrorBanner message={error} className={styles.errorBanner} />
+          ) : null}
+
+          <OnSaleHero events={onSaleEvents} totalCount={filterCounts.onsale} />
+
+          <FeedToolbar
+            filter={filter}
+            sort={sort}
+            filters={filters}
+            onFilterChange={setFilter}
+            onSortChange={setSort}
+          />
+
+          <EventList
+            events={filteredSortedEvents}
+            alertsByEventId={alertsByEventId}
+            totalEvents={events.length}
+            loading={busy}
+          />
+        </main>
       </div>
 
       <SettingsDrawer
-        open={settingsOpen}
+        open={settingsOpen !== false}
+        initialTab={settingsOpen || undefined}
         artists={artists}
         busy={busy}
         city={city}

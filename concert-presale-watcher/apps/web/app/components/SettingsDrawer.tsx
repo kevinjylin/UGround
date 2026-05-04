@@ -41,6 +41,7 @@ const getFocusable = (root: HTMLElement | null): HTMLElement[] => {
 
 interface SettingsDrawerProps {
   open: boolean;
+  initialTab?: SettingsTab;
   artists: WatchArtist[];
   busy: boolean;
   city: string;
@@ -73,6 +74,7 @@ interface SettingsDrawerProps {
 
 export default function SettingsDrawer({
   open,
+  initialTab,
   artists,
   busy,
   city,
@@ -102,7 +104,7 @@ export default function SettingsDrawer({
   useEffect(() => {
     if (!open) return;
 
-    setActiveTab("watchlist");
+    setActiveTab(initialTab ?? "watchlist");
 
     const previousFocus =
       document.activeElement instanceof HTMLElement
@@ -130,7 +132,7 @@ export default function SettingsDrawer({
       document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
-  }, [open, onClose]);
+  }, [initialTab, open, onClose]);
 
   const trapFocus = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab") return;
