@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { alertTypeLabel, channelLabel } from "../../lib/alertFormat";
 import { relativeTime, shortDate } from "../../lib/format";
 import type {
@@ -10,12 +11,6 @@ import type {
   EventStatus,
 } from "../../lib/types";
 import styles from "../dashboard/dashboard.module.css";
-
-const sourceLabel: Record<EventRecord["source_slug"], string> = {
-  ticketmaster: "Ticketmaster",
-  eventbrite: "Eventbrite",
-  manual: "Manual",
-};
 
 const statusLabel: Record<EventStatus, string> = {
   onsale: "On Sale",
@@ -40,6 +35,16 @@ const statusBadgeClass: Record<EventStatus, string | undefined> = {
   unknown: "",
 };
 
+const statusRailClass: Record<EventStatus, string | undefined> = {
+  onsale: styles.eventStatusRailOnsale,
+  offsale: "",
+  cancelled: styles.eventStatusRailCancelled,
+  postponed: styles.eventStatusRailWarning,
+  rescheduled: styles.eventStatusRailWarning,
+  scheduled: "",
+  unknown: "",
+};
+
 const alertTypeBadgeClass: Record<AlertType, string | undefined> = {
   new_event: styles.alertBadgeNew,
   status_changed: styles.alertBadgeStatus,
@@ -47,15 +52,12 @@ const alertTypeBadgeClass: Record<AlertType, string | undefined> = {
   on_sale_moved_earlier: styles.alertBadgeUrgent,
 };
 
-const eventLocation = (event: EventRecord): string => {
+const eventDate = (event: EventRecord): string => shortDate(event.start_time);
+
+const eventVenueLine = (event: EventRecord): string => {
   const cityRegion = [event.city, event.state].filter(Boolean).join(", ");
 
-  return [
-    event.venue ?? "Unknown venue",
-    cityRegion || null,
-    shortDate(event.start_time),
-    sourceLabel[event.source_slug],
-  ]
+  return [event.title, event.venue ?? null, cityRegion || null]
     .filter(Boolean)
     .join(" · ");
 };
@@ -78,20 +80,42 @@ function EventCard({
 
   return (
     <li className={styles.eventCard}>
+      <i
+        className={cx(styles.eventStatusRail, statusRailClass[event.status])}
+        aria-hidden="true"
+      />
       <div className={styles.eventCardMain}>
         <div className={styles.eventCardTop}>
-          <strong className={styles.eventArtist}>{event.artist_name}</strong>
-          <span
-            className={cx(styles.statusBadge, statusBadgeClass[event.status])}
-          >
-            {statusLabel[event.status]}
-          </span>
+          <div className={styles.eventStatusGroup}>
+            <span
+              className={cx(styles.statusBadge, statusBadgeClass[event.status])}
+            >
+              {statusLabel[event.status]}
+            </span>
+            <span className={styles.eventDate}>{eventDate(event)}</span>
+          </div>
+          {event.ticket_url ? (
+            <a
+              href={event.ticket_url}
+              target="_blank"
+              rel="noreferrer"
+              className={styles.ticketLink}
+              aria-label={`Tickets for ${event.title} (opens in new tab)`}
+            >
+              Tickets
+              <ArrowUpRight aria-hidden="true" size={15} />
+            </a>
+          ) : null}
         </div>
 
-        <p className={styles.eventTitle}>{event.title}</p>
-        <p className={styles.eventMeta}>{eventLocation(event)}</p>
+        <strong className={styles.eventArtist}>{event.artist_name}</strong>
+        <p className={styles.eventTitle}>{eventVenueLine(event)}</p>
 
         <div className={styles.activityLine}>
+          <span
+            className={cx(styles.activityDot, statusRailClass[event.status])}
+            aria-hidden="true"
+          />
           {latestAlert ? (
             <>
               <span
@@ -110,12 +134,9 @@ function EventCard({
               </span>
             </>
           ) : (
-            <>
-              <span className={styles.activityMuted}>No alert activity yet</span>
-              <span className={styles.alertTime}>
-                Last seen {relativeTime(event.last_seen_at)}
-              </span>
-            </>
+            <span className={styles.activityMuted}>
+              {relativeTime(event.last_seen_at)}
+            </span>
           )}
         </div>
 
@@ -125,8 +146,17 @@ function EventCard({
             className={styles.timelineToggle}
             onClick={onToggleExpanded}
             aria-expanded={expanded}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${updateCount} updates for ${event.title}`}
           >
-            {expanded ? "Hide updates" : `${updateCount} updates`}
+            <span>{updateCount} updates</span>
+            <ChevronDown
+              aria-hidden="true"
+              size={14}
+              className={cx(
+                styles.timelineChevron,
+                expanded ? styles.timelineChevronOpen : undefined,
+              )}
+            />
           </button>
         ) : null}
 
@@ -177,18 +207,6 @@ function EventCard({
           </ol>
         ) : null}
       </div>
-
-      {event.ticket_url ? (
-        <a
-          href={event.ticket_url}
-          target="_blank"
-          rel="noreferrer"
-          className={styles.ticketLink}
-          aria-label={`Tickets for ${event.title} (opens in new tab)`}
-        >
-          Tickets -&gt;
-        </a>
-      ) : null}
     </li>
   );
 }
@@ -224,7 +242,11 @@ export default function EventList({
   };
 
   return (
-    <article className={`${styles.panel} ${styles.eventPanel}`}>
+    <article
+      id="event-feed"
+      className={`${styles.panel} ${styles.eventPanel}`}
+      tabIndex={-1}
+    >
       <div className={styles.feedHeader}>
         <h2>Event Feed</h2>
         {!loading ? <span>{events.length} shown</span> : null}
