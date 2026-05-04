@@ -1,11 +1,53 @@
-import { FormEvent, useId, useState } from "react";
-import type { PollResult } from "../../lib/types";
+import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import {
+  searchConcertMarkets,
+  US_CONCERT_MARKETS,
+} from "../../lib/locations";
+import type {
+  ArtistSuggestion,
+  LocationSuggestion,
+  PollResult,
+} from "../../lib/types";
+import AutocompleteCombobox, {
+  type ComboboxOption,
+} from "./AutocompleteCombobox";
 import styles from "../dashboard/dashboard.module.css";
 
 const shortDate = (value: string | null): string => {
   if (!value) return "Unknown";
   return new Date(value).toLocaleString();
 };
+
+const formatLocation = (
+  city: string,
+  stateRegion: string,
+  country: string,
+): string => {
+  const parts = [city, stateRegion].map((part) => part.trim()).filter(Boolean);
+  if (parts.length > 0) {
+    return parts.join(", ");
+  }
+
+  return country.trim() && country.trim() !== "US" ? country.trim() : "";
+};
+
+const artistToOption = (artist: ArtistSuggestion): ComboboxOption => ({
+  id: artist.id,
+  label: artist.name,
+  description: "Spotify artist",
+  imageUrl: artist.imageUrl,
+});
+
+const locationToOption = (location: LocationSuggestion): ComboboxOption => ({
+  id: location.id,
+  label: location.label,
+  description: location.description,
+  meta: location.state,
+});
+
+const US_LOCATION_BY_ID = new Map(
+  US_CONCERT_MARKETS.map((location) => [location.id, location]),
+);
 
 interface WatchlistPanelProps {
   busy: boolean;
@@ -15,7 +57,7 @@ interface WatchlistPanelProps {
   onCityChange: (v: string) => void;
   onStateChange: (v: string) => void;
   onCountryChange: (v: string) => void;
-  onAdd: (name: string) => Promise<void>;
+  onAdd: (name: string, spotifyId?: string) => Promise<void>;
   onImportSpotify: (ids: string) => Promise<void>;
   onPoll: (secret: string) => Promise<void>;
   polling: boolean;
@@ -37,14 +79,94 @@ export default function WatchlistPanel({
   lastPoll,
 }: WatchlistPanelProps) {
   const [artistName, setArtistName] = useState("");
+  const [selectedArtist, setSelectedArtist] =
+    useState<ArtistSuggestion | null>(null);
+  const [artistSuggestions, setArtistSuggestions] = useState<
+    ArtistSuggestion[]
+  >([]);
+  const [artistSearchLoading, setArtistSearchLoading] = useState(false);
+  const [artistSearchError, setArtistSearchError] = useState<string | null>(
+    null,
+  );
+  const [locationInput, setLocationInput] = useState(() =>
+    formatLocation(city, stateRegion, country),
+  );
   const [spotifyIds, setSpotifyIds] = useState("");
   const [pollSecret, setPollSecret] = useState("");
   const uid = useId();
 
+  const artistOptions = useMemo(
+    () => artistSuggestions.map(artistToOption),
+    [artistSuggestions],
+  );
+  const locationOptions = useMemo(
+    () => searchConcertMarkets(locationInput).map(locationToOption),
+    [locationInput],
+  );
+
+  useEffect(() => {
+    const query = artistName.trim();
+
+    if (query.length < 2 || selectedArtist?.name === artistName) {
+      setArtistSuggestions([]);
+      setArtistSearchLoading(false);
+      setArtistSearchError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setArtistSearchLoading(true);
+      setArtistSearchError(null);
+
+      void fetch(`/api/search/artists?q=${encodeURIComponent(query)}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const body = (await response.json()) as {
+            artists?: ArtistSuggestion[];
+            error?: string;
+          };
+
+          if (!response.ok || body.error) {
+            throw new Error(body.error ?? "Spotify search unavailable");
+          }
+
+          setArtistSuggestions(body.artists ?? []);
+        })
+        .catch((error) => {
+          if ((error as Error).name === "AbortError") {
+            return;
+          }
+
+          setArtistSuggestions([]);
+          setArtistSearchError((error as Error).message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setArtistSearchLoading(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [artistName, selectedArtist]);
+
   const handleAddArtist = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await onAdd(artistName);
+    const trimmedName = artistName.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    await onAdd(trimmedName, selectedArtist?.id);
     setArtistName("");
+    setSelectedArtist(null);
+    setArtistSuggestions([]);
   };
 
   const handleImport = async (e: FormEvent<HTMLFormElement>) => {
@@ -57,57 +179,94 @@ export default function WatchlistPanel({
     await onPoll(pollSecret);
   };
 
+  const handleArtistValueChange = (value: string) => {
+    setArtistName(value);
+    if (selectedArtist && selectedArtist.name !== value) {
+      setSelectedArtist(null);
+    }
+  };
+
+  const handleArtistSelect = (option: ComboboxOption) => {
+    const artist = artistSuggestions.find((item) => item.id === option.id);
+    if (!artist) {
+      return;
+    }
+
+    setSelectedArtist(artist);
+    setArtistName(artist.name);
+    setArtistSuggestions([]);
+    setArtistSearchError(null);
+  };
+
+  const handleLocationValueChange = (value: string) => {
+    setLocationInput(value);
+    onCityChange(value.trim());
+    onStateChange("");
+    onCountryChange("US");
+  };
+
+  const handleLocationSelect = (option: ComboboxOption) => {
+    const location = US_LOCATION_BY_ID.get(option.id);
+    if (!location) {
+      return;
+    }
+
+    setLocationInput(location.label);
+    onCityChange(location.city);
+    onStateChange(location.state);
+    onCountryChange(location.country);
+  };
+
   return (
     <article className={`${styles.panel} ${styles.watchlistComposer}`}>
       <form
         className={`${styles.stack} ${styles.watchlistForm}`}
         onSubmit={handleAddArtist}
       >
-        <label htmlFor={`${uid}-artist`} className="srOnly">
-          Artist name
-        </label>
-        <input
+        <AutocompleteCombobox
           id={`${uid}-artist`}
+          label="Artist name"
           value={artistName}
-          onChange={(e) => setArtistName(e.target.value)}
           placeholder="Artist name"
           required
+          disabled={busy}
+          options={artistOptions}
+          loading={artistSearchLoading}
+          error={artistSearchError}
+          emptyMessage="No Spotify artist match. Typed artist will be used."
+          showEmptyMessage={
+            artistName.trim().length >= 2 &&
+            !selectedArtist &&
+            !artistSearchLoading
+          }
+          statusMessage={
+            selectedArtist
+              ? `Selected Spotify artist: ${selectedArtist.name}`
+              : null
+          }
+          onValueChange={handleArtistValueChange}
+          onSelect={handleArtistSelect}
         />
-        <div className={styles.inlineInputs}>
-          <div>
-            <label htmlFor={`${uid}-city`} className="srOnly">
-              City
-            </label>
-            <input
-              id={`${uid}-city`}
-              value={city}
-              onChange={(e) => onCityChange(e.target.value)}
-              placeholder="City (optional)"
-            />
-          </div>
-          <div>
-            <label htmlFor={`${uid}-state`} className="srOnly">
-              State
-            </label>
-            <input
-              id={`${uid}-state`}
-              value={stateRegion}
-              onChange={(e) => onStateChange(e.target.value)}
-              placeholder="State"
-            />
-          </div>
-          <div>
-            <label htmlFor={`${uid}-country`} className="srOnly">
-              Country
-            </label>
-            <input
-              id={`${uid}-country`}
-              value={country}
-              onChange={(e) => onCountryChange(e.target.value)}
-              placeholder="Country"
-            />
-          </div>
-        </div>
+        <AutocompleteCombobox
+          id={`${uid}-location`}
+          label="Location"
+          value={locationInput}
+          placeholder="City or market (optional)"
+          disabled={busy}
+          options={locationOptions}
+          emptyMessage="No market match. Typed city will be used."
+          showEmptyMessage={Boolean(locationInput.trim())}
+          statusMessage={
+            locationInput.trim()
+              ? "Select a market, or keep typing a city manually."
+              : null
+          }
+          onValueChange={handleLocationValueChange}
+          onSelect={handleLocationSelect}
+          renderMeta={(option) => (
+            <span className={styles.locationBadge}>{option.meta}</span>
+          )}
+        />
         <button className={styles.primaryButton} type="submit" disabled={busy}>
           Add to Watchlist
         </button>

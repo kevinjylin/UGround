@@ -27,6 +27,22 @@ export interface WatchArtist {
   updated_at: string;
 }
 
+export interface ArtistSuggestion {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  profileUrl: string | null;
+}
+
+export interface LocationSuggestion {
+  id: string;
+  city: string;
+  state: string;
+  country: string;
+  label: string;
+  description: string;
+}
+
 export interface EventRecord {
   id: string;
   user_id: string;
