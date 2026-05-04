@@ -1,31 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { FormEvent, useState } from "react";
+import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 import AuthFrame from "../components/AuthFrame";
 import ErrorBanner from "../components/ErrorBanner";
 import styles from "../auth.module.css";
 
 function ResetPasswordForm() {
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token") ?? "";
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [complete, setComplete] = useState(false);
-  const [error, setError] = useState<string | null>(
-    token ? null : "Invalid reset link.",
-  );
+  const [error, setError] = useState<string | null>(null);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-
-    if (!token) {
-      setError("Invalid reset link.");
-      return;
-    }
 
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
@@ -40,17 +31,18 @@ function ResetPasswordForm() {
     setBusy(true);
 
     try {
-      const response = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
+      const supabase = createSupabaseBrowserClient();
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
       });
-      const json = (await response.json()) as { ok?: boolean; error?: string };
 
-      if (!response.ok || json.error || !json.ok) {
-        throw new Error(json.error ?? "Could not reset your password.");
+      if (updateError) {
+        throw new Error(
+          "Reset link expired or invalid. Request a new password reset link.",
+        );
       }
 
+      await supabase.auth.signOut();
       setComplete(true);
       setPassword("");
       setConfirmPassword("");
@@ -90,7 +82,6 @@ function ResetPasswordForm() {
           onChange={(event) => setPassword(event.target.value)}
           placeholder="New password"
           minLength={8}
-          disabled={!token}
           required
         />
         <label htmlFor="reset-confirm-password" className="srOnly">
@@ -105,14 +96,9 @@ function ResetPasswordForm() {
           onChange={(event) => setConfirmPassword(event.target.value)}
           placeholder="Confirm password"
           minLength={8}
-          disabled={!token}
           required
         />
-        <button
-          className={styles.primaryButton}
-          type="submit"
-          disabled={busy || !token}
-        >
+        <button className={styles.primaryButton} type="submit" disabled={busy}>
           {busy ? "Resetting..." : "Reset password"}
         </button>
       </form>
@@ -131,11 +117,7 @@ export default function ResetPasswordPage() {
       title="Choose a new password."
       lead="Finish the reset and sign in again when the link checks out."
     >
-      <Suspense
-        fallback={<p className={styles.helpText}>Loading reset link...</p>}
-      >
-        <ResetPasswordForm />
-      </Suspense>
+      <ResetPasswordForm />
 
       <p className={styles.footnote}>
         Back to <Link href="/login">sign in</Link>

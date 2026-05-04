@@ -44,37 +44,6 @@ interface UpsertNotificationSettingsInput {
   smsConfirmationExpiresAt?: string | null;
 }
 
-export interface AuthUserRecord {
-  id: string;
-  username: string;
-  email: string;
-  password_hash: string;
-  password_salt: string;
-  created_at: string;
-}
-
-interface PasswordResetRecord {
-  id: string;
-  user_id: string;
-  token_hash: string;
-  expires_at: string;
-  used_at: string | null;
-  created_at: string;
-}
-
-interface CreateAuthUserInput {
-  username: string;
-  email: string;
-  passwordHash: string;
-  passwordSalt: string;
-}
-
-interface CreatePasswordResetInput {
-  userId: string;
-  tokenHash: string;
-  expiresAt: string;
-}
-
 const getBaseUrl = (): string => {
   assertSupabaseConfig();
   return `${env.supabaseUrl}/rest/v1`;
@@ -131,7 +100,9 @@ const supabaseRequest = async <T>(
   return JSON.parse(text) as T;
 };
 
-export const listWatchArtists = async (userId?: string): Promise<WatchArtist[]> => {
+export const listWatchArtists = async (
+  userId?: string,
+): Promise<WatchArtist[]> => {
   if (!env.supabaseUrl || !env.supabaseServiceKey) {
     return [];
   }
@@ -149,7 +120,9 @@ export const listWatchArtists = async (userId?: string): Promise<WatchArtist[]> 
   );
 };
 
-export const createWatchArtist = async (input: CreateWatchArtistInput): Promise<WatchArtist> => {
+export const createWatchArtist = async (
+  input: CreateWatchArtistInput,
+): Promise<WatchArtist> => {
   const payload = {
     user_id: input.userId,
     name: input.name,
@@ -172,153 +145,12 @@ export const createWatchArtist = async (input: CreateWatchArtistInput): Promise<
   );
 };
 
-export const deleteWatchArtist = async (id: string, userId: string): Promise<void> => {
-  await supabaseRequest<void>(`/watch_artists?id=eq.${id}&user_id=eq.${encodeURIComponent(userId)}`, {
-    method: "DELETE",
-    headers: {
-      Prefer: "return=minimal",
-    },
-  });
-};
-
-const normalizeAuthLookupValue = (value: string): string =>
-  value.trim().toLowerCase();
-
-export const getAuthUserByUsername = async (
-  username: string,
-): Promise<AuthUserRecord | null> => {
-  if (!env.supabaseUrl || !env.supabaseServiceKey) {
-    return null;
-  }
-
-  const encodedUsername = encodeURIComponent(
-    normalizeAuthLookupValue(username),
-  );
-  const users = await supabaseRequest<AuthUserRecord[]>(
-    `/auth_users?select=*&username=eq.${encodedUsername}&limit=1`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    },
-  );
-
-  return users[0] ?? null;
-};
-
-export const getAuthUserByEmail = async (
-  email: string,
-): Promise<AuthUserRecord | null> => {
-  if (!env.supabaseUrl || !env.supabaseServiceKey) {
-    return null;
-  }
-
-  const encodedEmail = encodeURIComponent(normalizeAuthLookupValue(email));
-  const users = await supabaseRequest<AuthUserRecord[]>(
-    `/auth_users?select=*&email=eq.${encodedEmail}&limit=1`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    },
-  );
-
-  return users[0] ?? null;
-};
-
-export const getAuthUserByIdentifier = async (
-  identifier: string,
-): Promise<AuthUserRecord | null> => {
-  const normalizedIdentifier = normalizeAuthLookupValue(identifier);
-  return normalizedIdentifier.includes("@")
-    ? getAuthUserByEmail(normalizedIdentifier)
-    : getAuthUserByUsername(normalizedIdentifier);
-};
-
-export const createAuthUser = async (
-  input: CreateAuthUserInput,
-): Promise<AuthUserRecord> => {
-  return supabaseRequest<AuthUserRecord>(
-    "/auth_users?select=*",
-    {
-      method: "POST",
-      headers: {
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        username: input.username,
-        email: input.email,
-        password_hash: input.passwordHash,
-        password_salt: input.passwordSalt,
-      }),
-    },
-    true,
-  );
-};
-
-export const createPasswordReset = async (
-  input: CreatePasswordResetInput,
-): Promise<PasswordResetRecord> => {
-  return supabaseRequest<PasswordResetRecord>(
-    "/password_resets?select=*",
-    {
-      method: "POST",
-      headers: {
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        user_id: input.userId,
-        token_hash: input.tokenHash,
-        expires_at: input.expiresAt,
-      }),
-    },
-    true,
-  );
-};
-
-export const getPasswordResetByTokenHash = async (
-  tokenHash: string,
-): Promise<PasswordResetRecord | null> => {
-  if (!env.supabaseUrl || !env.supabaseServiceKey) {
-    return null;
-  }
-
-  const encodedTokenHash = encodeURIComponent(tokenHash);
-  const records = await supabaseRequest<PasswordResetRecord[]>(
-    `/password_resets?select=*&token_hash=eq.${encodedTokenHash}&limit=1`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    },
-  );
-
-  return records[0] ?? null;
-};
-
-export const markPasswordResetUsed = async (id: string): Promise<void> => {
-  await supabaseRequest<void>(
-    `/password_resets?id=eq.${encodeURIComponent(id)}`,
-    {
-      method: "PATCH",
-      headers: {
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        used_at: new Date().toISOString(),
-      }),
-    },
-  );
-};
-
-export const deletePasswordResetsForUser = async (
+export const deleteWatchArtist = async (
+  id: string,
   userId: string,
 ): Promise<void> => {
   await supabaseRequest<void>(
-    `/password_resets?user_id=eq.${encodeURIComponent(userId)}&used_at=is.null`,
+    `/watch_artists?id=eq.${id}&user_id=eq.${encodeURIComponent(userId)}`,
     {
       method: "DELETE",
       headers: {
@@ -328,27 +160,10 @@ export const deletePasswordResetsForUser = async (
   );
 };
 
-export const updateAuthUserPassword = async (
-  userId: string,
-  hash: string,
-  salt: string,
-): Promise<void> => {
-  await supabaseRequest<void>(
-    `/auth_users?id=eq.${encodeURIComponent(userId)}`,
-    {
-      method: "PATCH",
-      headers: {
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        password_hash: hash,
-        password_salt: salt,
-      }),
-    },
-  );
-};
-
-export const listEvents = async (limit = 100, userId?: string): Promise<EventRecord[]> => {
+export const listEvents = async (
+  limit = 100,
+  userId?: string,
+): Promise<EventRecord[]> => {
   if (!env.supabaseUrl || !env.supabaseServiceKey) {
     return [];
   }
@@ -388,7 +203,9 @@ export const getEventBySourceId = async (
   return records[0] ?? null;
 };
 
-export const upsertEvent = async (normalized: NormalizedEvent): Promise<EventRecord> => {
+export const upsertEvent = async (
+  normalized: NormalizedEvent,
+): Promise<EventRecord> => {
   const payload = {
     user_id: normalized.user_id,
     source_slug: normalized.source_slug,
@@ -421,7 +238,9 @@ export const upsertEvent = async (normalized: NormalizedEvent): Promise<EventRec
   );
 };
 
-export const getLatestSnapshot = async (eventId: string): Promise<SnapshotRecord | null> => {
+export const getLatestSnapshot = async (
+  eventId: string,
+): Promise<SnapshotRecord | null> => {
   const encodedEventId = encodeURIComponent(eventId);
 
   const snapshots = await supabaseRequest<SnapshotRecord[]>(
@@ -456,7 +275,10 @@ export const createSnapshot = async (
   );
 };
 
-export const listAlerts = async (limit = 50, userId?: string): Promise<AlertRecord[]> => {
+export const listAlerts = async (
+  limit = 50,
+  userId?: string,
+): Promise<AlertRecord[]> => {
   if (!env.supabaseUrl || !env.supabaseServiceKey) {
     return [];
   }
@@ -474,7 +296,9 @@ export const listAlerts = async (limit = 50, userId?: string): Promise<AlertReco
   );
 };
 
-export const createAlert = async (input: CreateAlertInput): Promise<AlertRecord> => {
+export const createAlert = async (
+  input: CreateAlertInput,
+): Promise<AlertRecord> => {
   return supabaseRequest<AlertRecord>(
     "/alerts?select=*",
     {
@@ -529,7 +353,8 @@ export const upsertNotificationSettings = async (
     email_confirmed_at: existing?.email_confirmed_at ?? null,
     sms_confirmed_at: existing?.sms_confirmed_at ?? null,
     email_confirmation_hash: existing?.email_confirmation_hash ?? null,
-    email_confirmation_expires_at: existing?.email_confirmation_expires_at ?? null,
+    email_confirmation_expires_at:
+      existing?.email_confirmation_expires_at ?? null,
     sms_confirmation_hash: existing?.sms_confirmation_hash ?? null,
     sms_confirmation_expires_at: existing?.sms_confirmation_expires_at ?? null,
   };

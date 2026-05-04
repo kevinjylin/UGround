@@ -16,7 +16,10 @@ export async function POST(request: Request) {
     }
 
     const { email, token } = await createEmailConfirmation(userId);
-    const url = new URL("/api/notification-settings/confirm-email", getBaseAppUrl(request));
+    const url = new URL(
+      "/api/notification-settings/confirm-email",
+      getBaseAppUrl(request),
+    );
     url.searchParams.set("token", token);
 
     const sent = await sendEmailMessage(
@@ -26,7 +29,10 @@ export async function POST(request: Request) {
     );
 
     if (!sent) {
-      return NextResponse.json({ error: "Email provider is not configured or rejected the message." }, { status: 502 });
+      return NextResponse.json(
+        { error: "Email provider is not configured or rejected the message." },
+        { status: 502 },
+      );
     }
 
     return NextResponse.json({ ok: true });

@@ -149,9 +149,7 @@ export interface HealthResponse {
     spotify: boolean;
   };
   authConfigured: {
-    credentials: boolean;
-    google: boolean;
-    secret: boolean;
+    supabase: boolean;
   };
   alertChannelsConfigured: {
     discord: boolean;

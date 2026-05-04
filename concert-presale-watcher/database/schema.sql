@@ -32,7 +32,7 @@ on conflict (slug) do nothing;
 
 create table if not exists watch_artists (
   id uuid primary key default gen_random_uuid(),
-  user_id text not null default 'legacy',
+  user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
   spotify_id text,
   city text not null default '',
@@ -41,9 +41,6 @@ create table if not exists watch_artists (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
-alter table watch_artists
-add column if not exists user_id text not null default 'legacy';
 
 alter table watch_artists
 drop constraint if exists watch_artists_name_city_country_key;
@@ -57,52 +54,9 @@ before update on watch_artists
 for each row
 execute function set_updated_at();
 
-create table if not exists auth_users (
-  id uuid primary key default gen_random_uuid(),
-  username text not null unique,
-  email text not null,
-  password_hash text not null,
-  password_salt text not null,
-  created_at timestamptz not null default now()
-);
-
-alter table auth_users
-add column if not exists email text;
-
-update auth_users
-set email = username || '@placeholder.invalid'
-where email is null;
-
-update auth_users
-set email = lower(email);
-
-alter table auth_users
-alter column email set not null;
-
-alter table auth_users
-drop constraint if exists auth_users_email_lowercase;
-
-alter table auth_users
-add constraint auth_users_email_lowercase check (email = lower(email));
-
-create unique index if not exists auth_users_email_unique_idx
-on auth_users (email);
-
-create table if not exists password_resets (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth_users(id) on delete cascade,
-  token_hash text not null unique,
-  expires_at timestamptz not null,
-  used_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists password_resets_user_idx
-on password_resets (user_id);
-
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),
-  user_id text not null default 'legacy',
+  user_id uuid not null references auth.users(id) on delete cascade,
   source_slug text not null references sources(slug),
   source_event_id text not null,
   watch_artist_id uuid references watch_artists(id) on delete set null,
@@ -121,9 +75,6 @@ create table if not exists events (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
-alter table events
-add column if not exists user_id text not null default 'legacy';
 
 alter table events
 drop constraint if exists events_source_slug_source_event_id_key;
@@ -159,7 +110,7 @@ on snapshots (event_id, checked_at desc);
 
 create table if not exists alerts (
   id uuid primary key default gen_random_uuid(),
-  user_id text not null default 'legacy',
+  user_id uuid not null references auth.users(id) on delete cascade,
   event_id uuid not null references events(id) on delete cascade,
   alert_type text not null check (
     alert_type in ('new_event', 'status_changed', 'ticket_url_changed', 'on_sale_moved_earlier')
@@ -171,9 +122,6 @@ create table if not exists alerts (
   created_at timestamptz not null default now()
 );
 
-alter table alerts
-add column if not exists user_id text not null default 'legacy';
-
 create index if not exists alerts_created_at_idx
 on alerts (created_at desc);
 
@@ -181,7 +129,7 @@ create index if not exists alerts_user_created_at_idx
 on alerts (user_id, created_at desc);
 
 create table if not exists notification_settings (
-  user_id text primary key,
+  user_id uuid primary key references auth.users(id) on delete cascade,
   discord_webhook_encrypted text,
   email_encrypted text,
   phone_encrypted text,

@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
+import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 import AuthFrame from "../components/AuthFrame";
 import ErrorBanner from "../components/ErrorBanner";
 import styles from "../auth.module.css";
+
+const getResetCallbackUrl = (): string => {
+  const callbackUrl = new URL("/auth/callback", window.location.origin);
+  callbackUrl.searchParams.set("next", "/reset-password");
+  return callbackUrl.toString();
+};
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -18,15 +25,16 @@ export default function ForgotPasswordPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const json = (await response.json()) as { ok?: boolean; error?: string };
+      const supabase = createSupabaseBrowserClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+        {
+          redirectTo: getResetCallbackUrl(),
+        },
+      );
 
-      if (!response.ok || json.error || !json.ok) {
-        throw new Error(json.error ?? "Could not request a reset link.");
+      if (resetError) {
+        throw new Error("Could not request a reset link.");
       }
 
       setSubmitted(true);
