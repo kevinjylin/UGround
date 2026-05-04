@@ -1,9 +1,18 @@
 import { env } from "../env";
+import type { ArtistSuggestion } from "../types";
 
 export interface SpotifyArtist {
   id: string;
   name: string;
   popularity: number;
+  external_urls?: {
+    spotify?: string;
+  };
+  images?: {
+    height: number | null;
+    url: string;
+    width: number | null;
+  }[];
 }
 
 interface SpotifyTokenResponse {
@@ -13,6 +22,12 @@ interface SpotifyTokenResponse {
 
 interface SpotifyArtistsResponse {
   artists: SpotifyArtist[];
+}
+
+interface SpotifyArtistSearchResponse {
+  artists: {
+    items: SpotifyArtist[];
+  };
 }
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
@@ -58,6 +73,16 @@ const getAccessToken = async (): Promise<string> => {
 
   return body.access_token;
 };
+
+const artistToSuggestion = (artist: SpotifyArtist): ArtistSuggestion => ({
+  id: artist.id,
+  name: artist.name,
+  imageUrl: artist.images?.[0]?.url ?? null,
+  profileUrl: artist.external_urls?.spotify ?? null,
+});
+
+const startsWithQuery = (name: string, query: string): boolean =>
+  name.trim().toLowerCase().startsWith(query.trim().toLowerCase());
 
 export const getSpotifyArtistsByIds = async (ids: string[]): Promise<SpotifyArtist[]> => {
   const cleaned = ids
@@ -109,4 +134,65 @@ export const getSpotifyArtistsByIds = async (ids: string[]): Promise<SpotifyArti
   }
 
   throw new Error("Spotify artists request failed after retries");
+};
+
+export const searchSpotifyArtists = async (
+  query: string,
+): Promise<ArtistSuggestion[]> => {
+  const cleaned = query.trim();
+  if (cleaned.length < 2) {
+    return [];
+  }
+
+  let token = await getAccessToken();
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const params = new URLSearchParams({
+      q: cleaned,
+      type: "artist",
+      limit: "10",
+    });
+
+    const response = await fetch(
+      `https://api.spotify.com/v1/search?${params.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      },
+    );
+
+    if (response.ok) {
+      const body = (await response.json()) as SpotifyArtistSearchResponse;
+      return (body.artists?.items ?? [])
+        .filter((artist) => startsWithQuery(artist.name, cleaned))
+        .map(artistToSuggestion);
+    }
+
+    const errorText = await response.text();
+
+    if ((response.status === 401 || response.status === 403) && attempt < 1) {
+      cachedToken = null;
+      token = await getAccessToken();
+      continue;
+    }
+
+    if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      const retryAfterSeconds = Number(response.headers.get("Retry-After") ?? "0");
+      const delayMs =
+        Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+          ? retryAfterSeconds * 1000
+          : 600;
+      await wait(delayMs);
+      continue;
+    }
+
+    throw new Error(
+      `Spotify artist search failed (${response.status}): ${errorText.slice(0, 280) || "no response body"}`,
+    );
+  }
+
+  throw new Error("Spotify artist search failed after retries");
 };

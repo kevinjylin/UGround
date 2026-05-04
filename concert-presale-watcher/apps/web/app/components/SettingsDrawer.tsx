@@ -54,7 +54,7 @@ interface SettingsDrawerProps {
   onCityChange: (value: string) => void;
   onStateChange: (value: string) => void;
   onCountryChange: (value: string) => void;
-  onAddArtist: (name: string) => Promise<void>;
+  onAddArtist: (name: string, spotifyId?: string) => Promise<void>;
   onRemoveArtist: (id: string) => Promise<void>;
   onImportSpotify: (ids: string) => Promise<void>;
   onPoll: (secret: string) => Promise<void>;

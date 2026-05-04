@@ -272,13 +272,14 @@ export default function DashboardPage() {
         ? "loading latest status"
         : "last poll unavailable";
 
-  const addArtist = async (name: string) => {
+  const addArtist = async (name: string, spotifyId?: string) => {
     setError(null);
     const res = await fetch("/api/watchlist", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name,
+        spotifyId,
         city: city || undefined,
         state: stateRegion || undefined,
         country: country || "US",
