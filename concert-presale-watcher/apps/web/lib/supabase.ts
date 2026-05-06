@@ -150,7 +150,7 @@ export const deleteWatchArtist = async (
   userId: string,
 ): Promise<void> => {
   await supabaseRequest<void>(
-    `/watch_artists?id=eq.${id}&user_id=eq.${encodeURIComponent(userId)}`,
+    `/watch_artists?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(userId)}`,
     {
       method: "DELETE",
       headers: {
@@ -171,7 +171,7 @@ export const listEvents = async (
   const userFilter = userId ? `&user_id=eq.${encodeURIComponent(userId)}` : "";
 
   return supabaseRequest<EventRecord[]>(
-    `/events?select=*&order=updated_at.desc&limit=${limit}${userFilter}`,
+    `/events?select=*&order=updated_at.desc&limit=${encodeURIComponent(String(limit))}${userFilter}`,
     {
       method: "GET",
       headers: {
@@ -286,7 +286,7 @@ export const listAlerts = async (
   const userFilter = userId ? `&user_id=eq.${encodeURIComponent(userId)}` : "";
 
   return supabaseRequest<AlertRecord[]>(
-    `/alerts?select=*&order=created_at.desc&limit=${limit}${userFilter}`,
+    `/alerts?select=*&order=created_at.desc&limit=${encodeURIComponent(String(limit))}${userFilter}`,
     {
       method: "GET",
       headers: {
