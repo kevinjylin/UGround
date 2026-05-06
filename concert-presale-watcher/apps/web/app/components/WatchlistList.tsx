@@ -56,7 +56,8 @@ export default function WatchlistList({
           ))}
       {!loading && artists.length === 0 ? (
         <li className={styles.emptyState}>
-          No artists followed yet. Add artists using the form above.
+          <span className={styles.emptyStateTitle}>No artists followed yet</span>
+          <span className={styles.emptyStateHint}>Add artists using the form above.</span>
         </li>
       ) : null}
     </ul>
