@@ -10,6 +10,7 @@ import {
 } from "./supabase";
 import { fetchEventbriteEvents } from "./sources/eventbrite";
 import { fetchTicketmasterEvents } from "./sources/ticketmaster";
+import { logger } from "./logger";
 import type { AlertType, EventRecord, NormalizedEvent, PollResult, WatchArtist } from "./types";
 import { dedupeEvents, hashJson, movedEarlier } from "./utils";
 
@@ -92,11 +93,11 @@ const fetchSourcesForArtist = async (artist: WatchArtist): Promise<NormalizedEve
   const eventbriteEvents = sourceResults[1].status === "fulfilled" ? sourceResults[1].value : [];
 
   if (sourceResults[0].status === "rejected") {
-    console.error(`[poll] ticketmaster failed for ${artist.name}`, sourceResults[0].reason);
+    logger.error(`[poll] ticketmaster failed for ${artist.name}`, sourceResults[0].reason);
   }
 
   if (sourceResults[1].status === "rejected") {
-    console.error(`[poll] eventbrite failed for ${artist.name}`, sourceResults[1].reason);
+    logger.error(`[poll] eventbrite failed for ${artist.name}`, sourceResults[1].reason);
   }
 
   return [...ticketmasterEvents, ...eventbriteEvents];
