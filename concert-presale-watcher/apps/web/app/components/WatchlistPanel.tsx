@@ -268,7 +268,7 @@ export default function WatchlistPanel({
           )}
         />
         <button className={styles.primaryButton} type="submit" disabled={busy}>
-          Add to Watchlist
+          {busy ? "Adding..." : "Add to Watchlist"}
         </button>
       </form>
 
@@ -293,7 +293,7 @@ export default function WatchlistPanel({
                 type="submit"
                 disabled={busy}
               >
-                Import from Spotify
+                {busy ? "Importing..." : "Import from Spotify"}
               </button>
             </form>
           </fieldset>
