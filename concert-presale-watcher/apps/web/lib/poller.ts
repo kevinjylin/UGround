@@ -10,7 +10,7 @@ import {
 } from "./supabase";
 import { fetchEventbriteEvents } from "./sources/eventbrite";
 import { fetchTicketmasterEvents } from "./sources/ticketmaster";
-import type { AlertType, EventRecord, NormalizedEvent, PollResult } from "./types";
+import type { AlertType, EventRecord, NormalizedEvent, PollResult, WatchArtist } from "./types";
 import { dedupeEvents, hashJson, movedEarlier } from "./utils";
 
 const buildAlertMessage = (alertType: AlertType, previous: EventRecord | null, next: EventRecord): string => {
@@ -51,14 +51,38 @@ const getAlertTypes = (previous: EventRecord | null, next: NormalizedEvent): Ale
   return alerts;
 };
 
-const fetchAllSourcesForArtist = async (artistId: string, userId?: string): Promise<NormalizedEvent[]> => {
-  const artists = await listWatchArtists(userId);
-  const artist = artists.find((item) => item.id === artistId);
+/** Maximum number of artists to fetch from sources concurrently. */
+const POLL_CONCURRENCY = 5;
 
-  if (!artist) {
-    return [];
-  }
+/**
+ * Run a pool of async tasks with bounded concurrency.
+ * Returns results in the same order as the input tasks.
+ */
+const runPool = async <T>(tasks: Array<() => Promise<T>>, concurrency: number): Promise<T[]> => {
+  const results: T[] = new Array(tasks.length);
+  let nextIndex = 0;
 
+  const worker = async () => {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await tasks[index]!();
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker()),
+  );
+
+  return results;
+};
+
+
+/**
+ * Fetch events for a single artist from all sources concurrently.
+ * Failures in individual sources are logged but don't stop the poll.
+ */
+const fetchSourcesForArtist = async (artist: WatchArtist): Promise<NormalizedEvent[]> => {
   const sourceResults = await Promise.allSettled([
     fetchTicketmasterEvents(artist),
     fetchEventbriteEvents(artist),
@@ -78,35 +102,47 @@ const fetchAllSourcesForArtist = async (artistId: string, userId?: string): Prom
   return [...ticketmasterEvents, ...eventbriteEvents];
 };
 
-const fetchAllEvents = async (city?: string, userId?: string): Promise<NormalizedEvent[]> => {
+/**
+ * Look up a single artist by ID and fetch its events.
+ * Used by the per-artist poll endpoint.
+ */
+const fetchAllSourcesForArtist = async (artistId: string, userId?: string): Promise<NormalizedEvent[]> => {
   const artists = await listWatchArtists(userId);
-  const events: NormalizedEvent[] = [];
+  const artist = artists.find((item) => item.id === artistId);
 
-  for (const artist of artists) {
-    if (city && artist.city && artist.city.toLowerCase() !== city.toLowerCase()) {
-      continue;
-    }
-
-    const sourceResults = await Promise.allSettled([
-      fetchTicketmasterEvents(artist),
-      fetchEventbriteEvents(artist),
-    ]);
-
-    const ticketmasterEvents = sourceResults[0].status === "fulfilled" ? sourceResults[0].value : [];
-    const eventbriteEvents = sourceResults[1].status === "fulfilled" ? sourceResults[1].value : [];
-
-    if (sourceResults[0].status === "rejected") {
-      console.error(`[poll] ticketmaster failed for ${artist.name}`, sourceResults[0].reason);
-    }
-
-    if (sourceResults[1].status === "rejected") {
-      console.error(`[poll] eventbrite failed for ${artist.name}`, sourceResults[1].reason);
-    }
-
-    events.push(...ticketmasterEvents, ...eventbriteEvents);
+  if (!artist) {
+    return [];
   }
 
-  return events;
+  return fetchSourcesForArtist(artist);
+};
+
+/**
+ * Fetch events for all watched artists concurrently (bounded by POLL_CONCURRENCY).
+ * Previously this ran sequentially — with 20 artists × 2 sources that meant
+ * ~40 serial API calls. Now artists are fetched in parallel batches of 5.
+ */
+const fetchAllEvents = async (city?: string, userId?: string): Promise<NormalizedEvent[]> => {
+  const artists = await listWatchArtists(userId);
+
+  const eligibleArtists = artists.filter((artist) => {
+    if (city && artist.city && artist.city.toLowerCase() !== city.toLowerCase()) {
+      return false;
+    }
+    return true;
+  });
+
+  if (eligibleArtists.length === 0) {
+    return [];
+  }
+
+  const tasks = eligibleArtists.map(
+    (artist) => () => fetchSourcesForArtist(artist),
+  );
+
+  const resultsPerArtist = await runPool(tasks, POLL_CONCURRENCY);
+
+  return resultsPerArtist.flat();
 };
 
 export const runPollCycle = async (city?: string, userId?: string): Promise<PollResult> => {
