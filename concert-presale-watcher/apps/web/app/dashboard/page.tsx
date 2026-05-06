@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 import { relativeTime } from "../../lib/format";
@@ -80,12 +80,15 @@ export default function DashboardPage() {
   const [polling, setPolling] = useState(false);
   const [lastPoll, setLastPoll] = useState<PollResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Track previous artist count to detect first-artist-added transition.
+  const prevArtistCount = useRef<number | null>(null);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const openSettings = useCallback((tab: SettingsTab) => {
     setSettingsOpen(tab);
   }, []);
 
-  const refreshAll = async () => {
+  const refreshAll = async (isInitialLoad = false) => {
     setBusy(true);
     setError(null);
     try {
@@ -127,20 +130,48 @@ export default function DashboardPage() {
             notificationSettingsJson.error,
         );
       }
-      setArtists(watchlistJson.artists ?? []);
-      setEvents(eventsJson.events ?? []);
+      const fetchedArtists = watchlistJson.artists ?? [];
+      const fetchedEvents = eventsJson.events ?? [];
+
+      setArtists(fetchedArtists);
+      setEvents(fetchedEvents);
       setAlerts(alertsJson.alerts ?? []);
       setNotificationSettings(notificationSettingsJson.settings ?? null);
+
+      // Onboarding: auto-open the watchlist drawer for brand-new users.
+      if (isInitialLoad) {
+        prevArtistCount.current = fetchedArtists.length;
+        if (fetchedArtists.length === 0 && fetchedEvents.length === 0) {
+          setSettingsOpen("watchlist");
+        }
+      }
     } catch (caught) {
       setError((caught as Error).message);
+      // Even if APIs fail on first load, open the drawer to guide the user.
+      if (isInitialLoad) {
+        prevArtistCount.current = 0;
+        setSettingsOpen("watchlist");
+      }
     } finally {
       setBusy(false);
     }
   };
 
   useEffect(() => {
-    void refreshAll();
+    void refreshAll(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // When the user goes from 0 artists to 1+, auto-trigger a poll so
+  // events appear immediately instead of an empty feed.
+  useEffect(() => {
+    if (prevArtistCount.current === null) return;
+    if (prevArtistCount.current === 0 && artists.length > 0 && !polling) {
+      void runPoll("");
+    }
+    prevArtistCount.current = artists.length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artists.length]);
 
   const alertsByEventId = useMemo(() => {
     const grouped = new Map<string, AlertRecord[]>();
@@ -449,6 +480,8 @@ export default function DashboardPage() {
             alertsByEventId={alertsByEventId}
             totalEvents={events.length}
             loading={busy}
+            hasArtists={artists.length > 0}
+            onOpenWatchlist={() => openSettings("watchlist")}
           />
         </main>
       </div>

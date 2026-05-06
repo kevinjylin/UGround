@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, ChevronDown } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Heart, RefreshCw, Bell } from "lucide-react";
 import { alertTypeLabel, channelLabel } from "../../lib/alertFormat";
 import { relativeTime, shortDate } from "../../lib/format";
 import type {
@@ -211,11 +211,79 @@ function EventCard({
   );
 }
 
+// ── Onboarding empty state ──────────────────────────────────────────────────
+const onboardingSteps = [
+  {
+    num: "01",
+    title: "Add artists to your watchlist",
+    desc: "Search by name or import from Spotify — we'll start watching for presales and new dates.",
+    Icon: Heart,
+  },
+  {
+    num: "02",
+    title: "We poll the sources",
+    desc: "Ticketmaster, Eventbrite, and more — checked every minute. Events appear here automatically.",
+    Icon: RefreshCw,
+  },
+  {
+    num: "03",
+    title: "Set up notifications",
+    desc: "Get pinged via Discord, email, or SMS the second a status flips or a presale opens.",
+    Icon: Bell,
+  },
+];
+
+function OnboardingCard({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
+  return (
+    <li className={styles.onboardingCard}>
+      <div className={styles.onboardingHeader}>
+        <span className={styles.onboardingKicker}>Getting started</span>
+        <h3 className={styles.onboardingTitle}>
+          Build your watchlist,{"\u00A0"}catch every show.
+        </h3>
+        <p className={styles.onboardingLead}>
+          Add the artists you care about and UGround will watch for presales,
+          new dates, and status changes — and alert you the second something
+          moves.
+        </p>
+      </div>
+
+      <ol className={styles.onboardingSteps}>
+        {onboardingSteps.map((step) => (
+          <li key={step.num} className={styles.onboardingStep}>
+            <div className={styles.onboardingStepIcon} aria-hidden="true">
+              <step.Icon size={18} />
+            </div>
+            <div className={styles.onboardingStepBody}>
+              <div className={styles.onboardingStepNum}>{step.num}</div>
+              <strong>{step.title}</strong>
+              <p>{step.desc}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <button
+        type="button"
+        className={styles.onboardingCta}
+        onClick={onOpenWatchlist}
+      >
+        <Heart aria-hidden="true" size={16} />
+        Open Watchlist &amp; Add Artists
+      </button>
+    </li>
+  );
+}
+
+// ── Event list ──────────────────────────────────────────────────────────────
+
 interface EventListProps {
   events: EventRecord[];
   alertsByEventId: Map<string, AlertRecord[]>;
   totalEvents?: number;
   loading?: boolean;
+  hasArtists?: boolean;
+  onOpenWatchlist?: () => void;
 }
 
 export default function EventList({
@@ -223,6 +291,8 @@ export default function EventList({
   alertsByEventId,
   totalEvents,
   loading,
+  hasArtists,
+  onOpenWatchlist,
 }: EventListProps) {
   const [expandedEventIds, setExpandedEventIds] = useState<Set<string>>(
     () => new Set(),
@@ -270,20 +340,25 @@ export default function EventList({
               />
             ))}
         {!loading && events.length === 0 ? (
-          <li className={styles.emptyState}>
-            <span className={styles.emptyStateTitle}>
-              {hasAnyEvents
-                ? "No events match this view"
-                : "No events tracked yet"}
-            </span>
-            <span className={styles.emptyStateHint}>
-              {hasAnyEvents
-                ? "Change the filter or run a refresh to check for new presales."
-                : "Run a refresh to start tracking presales for your followed artists."}
-            </span>
-          </li>
+          !hasArtists && !hasAnyEvents && onOpenWatchlist ? (
+            <OnboardingCard onOpenWatchlist={onOpenWatchlist} />
+          ) : (
+            <li className={styles.emptyState}>
+              <span className={styles.emptyStateTitle}>
+                {hasAnyEvents
+                  ? "No events match this view"
+                  : "No events tracked yet"}
+              </span>
+              <span className={styles.emptyStateHint}>
+                {hasAnyEvents
+                  ? "Change the filter or run a refresh to check for new presales."
+                  : "Run a refresh to start tracking presales for your followed artists."}
+              </span>
+            </li>
+          )
         ) : null}
       </ul>
     </article>
   );
 }
+
