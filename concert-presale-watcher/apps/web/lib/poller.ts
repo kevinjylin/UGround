@@ -80,33 +80,34 @@ const fetchAllSourcesForArtist = async (artistId: string, userId?: string): Prom
 
 const fetchAllEvents = async (city?: string, userId?: string): Promise<NormalizedEvent[]> => {
   const artists = await listWatchArtists(userId);
-  const events: NormalizedEvent[] = [];
 
-  for (const artist of artists) {
-    if (city && artist.city && artist.city.toLowerCase() !== city.toLowerCase()) {
-      continue;
-    }
+  const results = await Promise.all(
+    artists.map(async (artist) => {
+      if (city && artist.city && artist.city.toLowerCase() !== city.toLowerCase()) {
+        return [];
+      }
 
-    const sourceResults = await Promise.allSettled([
-      fetchTicketmasterEvents(artist),
-      fetchEventbriteEvents(artist),
-    ]);
+      const sourceResults = await Promise.allSettled([
+        fetchTicketmasterEvents(artist),
+        fetchEventbriteEvents(artist),
+      ]);
 
-    const ticketmasterEvents = sourceResults[0].status === "fulfilled" ? sourceResults[0].value : [];
-    const eventbriteEvents = sourceResults[1].status === "fulfilled" ? sourceResults[1].value : [];
+      const ticketmasterEvents = sourceResults[0].status === "fulfilled" ? sourceResults[0].value : [];
+      const eventbriteEvents = sourceResults[1].status === "fulfilled" ? sourceResults[1].value : [];
 
-    if (sourceResults[0].status === "rejected") {
-      console.error(`[poll] ticketmaster failed for ${artist.name}`, sourceResults[0].reason);
-    }
+      if (sourceResults[0].status === "rejected") {
+        console.error(`[poll] ticketmaster failed for ${artist.name}`, sourceResults[0].reason);
+      }
 
-    if (sourceResults[1].status === "rejected") {
-      console.error(`[poll] eventbrite failed for ${artist.name}`, sourceResults[1].reason);
-    }
+      if (sourceResults[1].status === "rejected") {
+        console.error(`[poll] eventbrite failed for ${artist.name}`, sourceResults[1].reason);
+      }
 
-    events.push(...ticketmasterEvents, ...eventbriteEvents);
-  }
+      return [...ticketmasterEvents, ...eventbriteEvents];
+    }),
+  );
 
-  return events;
+  return results.flat();
 };
 
 export const runPollCycle = async (city?: string, userId?: string): Promise<PollResult> => {
