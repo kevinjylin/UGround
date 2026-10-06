@@ -1,6 +1,9 @@
-name: Poll dispatcher fallback
+name: Poll dispatcher daily fallback
 
 on:
+  schedule:
+    # Once daily at 8:17 PM PDT / 7:17 PM PST.
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 # Never let two cron firings (or a cron + manual dispatch) overlap; that
@@ -14,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Trigger /api/cron/poll
+      - name: Trigger /api/internal/dispatch
         env:
           POLL_URL: ${{ vars.POLL_URL || 'https://www.uground.app/api/internal/dispatch' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -26,6 +29,7 @@ jobs:
           fi
           response=$(mktemp)
           status=$(curl -sS -o "$response" -w "%{http_code}" \
+            --request POST \
             --max-time 540 \
             --retry 2 --retry-delay 30 --retry-all-errors \
             -H "Authorization: Bearer ${CRON_SECRET}" \

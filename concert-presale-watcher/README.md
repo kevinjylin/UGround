@@ -115,7 +115,7 @@ Notes:
 
 - Supabase Auth protects the site and API with a `/login` page.
 - Apply the scheduler migration after setting `app.settings.dispatch_url` and `app.settings.cron_secret` in Supabase. It invokes `/api/internal/dispatch` every minute and the database queue applies adaptive per-target cadence.
-- GitHub Actions `poll.yml` is a manual fallback, not the primary scheduler.
+- GitHub Actions `poll.yml` dispatches once daily at 03:17 UTC (8:17 PM PDT / 7:17 PM PST) and supports manual runs as a fallback to the primary Supabase scheduler. Set the repository's `CRON_SECRET` secret to match the deployed app; the optional `POLL_URL` repository variable must point to the POST dispatcher endpoint.
 - A separately deployed worker can consume the same queue with `WORKER_POLL_URL=https://<your-domain>/api/internal/dispatch`, `POLL_SECRET`, and `POLL_INTERVAL_MINUTES`.
 
 ## Notes
