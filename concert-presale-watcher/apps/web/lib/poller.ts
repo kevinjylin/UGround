@@ -141,10 +141,14 @@ const sourceAdapters = [
   bandsintownAdapter,
 ];
 
+/** True when this source has an adapter with credentials, so a job for it can run. */
+export const isSourceRunnable = (slug: string): boolean =>
+  sourceAdapters.some((adapter) => adapter.slug === slug && adapter.configured());
+
 const fetchSelectedSourcesForArtist = async (
   artist: WatchArtist,
   sourceSlugs?: string[],
-): Promise<NormalizedEvent[]> => {
+): Promise<{ events: NormalizedEvent[]; errors: string[] }> => {
   const selected = sourceAdapters.filter(
     (adapter) =>
       adapter.configured() &&
@@ -154,6 +158,7 @@ const fetchSelectedSourcesForArtist = async (
     selected.map((adapter) => adapter.fetchForArtist(artist)),
   );
   const normalized: NormalizedEvent[] = [];
+  const errors: string[] = [];
   for (const [index, result] of settled.entries()) {
     const slug = selected[index]?.slug ?? "source";
     if (result.status === "fulfilled") {
@@ -163,13 +168,14 @@ const fetchSelectedSourcesForArtist = async (
       const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
       logger.error(`[poll] ${slug} failed for ${artist.name}`, result.reason);
       await recordSourceHealth(slug, { success: false, error: message });
+      errors.push(message);
     }
   }
-  return normalized;
+  return { events: normalized, errors };
 };
 
 const fetchSourcesForArtist = async (artist: WatchArtist): Promise<NormalizedEvent[]> =>
-  fetchSelectedSourcesForArtist(artist);
+  (await fetchSelectedSourcesForArtist(artist)).events;
 
 /**
  * Look up a single artist by ID and fetch its events.
@@ -187,7 +193,12 @@ const fetchAllSourcesForArtist = async (
     return [];
   }
 
-  return fetchSelectedSourcesForArtist(artist, sourceSlugs);
+  // Surface a source failure (bad key, outage) instead of reporting success.
+  const { events, errors } = await fetchSelectedSourcesForArtist(artist, sourceSlugs);
+  if (errors.length > 0 && events.length === 0) {
+    throw new Error(errors.join("; "));
+  }
+  return events;
 };
 
 const persistAndDeliverAlert = async (

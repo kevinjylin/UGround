@@ -291,34 +291,68 @@ export const deleteWatchRule = async (id: string, userId: string): Promise<void>
   );
 };
 
-export const enqueuePollJobsForRule = async (
-  rule: WatchRule,
-  userId: string,
-): Promise<void> => {
+const POLL_JOB_SOURCES = ["ticketmaster", "eventbrite", "songkick", "bandsintown", "axs", "dice"];
+
+type PollJobRule = Pick<WatchRule, "id" | "user_id" | "kind" | "artist_id" | "venue_id" | "legacy_watch_artist_id">;
+
+const buildPollJobRows = (rule: PollJobRule, priority: number) => {
   const targetId = rule.artist_id ?? rule.venue_id ?? rule.id;
-  const sources = ["ticketmaster", "eventbrite", "songkick", "bandsintown", "axs", "dice"];
+  return POLL_JOB_SOURCES.map((sourceSlug) => ({
+    source_slug: sourceSlug,
+    target_type: rule.legacy_watch_artist_id ? "legacy_user" : rule.kind,
+    target_id: rule.legacy_watch_artist_id
+      ? `${rule.user_id}:${rule.legacy_watch_artist_id}`
+      : targetId,
+    user_id: rule.user_id,
+    priority,
+    next_poll_at: new Date().toISOString(),
+    cadence_seconds: 1800,
+    lease_owner: null,
+    lease_expires_at: null,
+  }));
+};
+
+// "merge" re-queues existing jobs to run now; "ignore" only adds missing ones.
+const upsertPollJobs = async (
+  rows: ReturnType<typeof buildPollJobRows>,
+  resolution: "merge" | "ignore",
+): Promise<void> => {
+  if (rows.length === 0) return;
   await supabaseRequest<void>(
     "/poll_jobs?on_conflict=source_slug,target_type,target_id",
     {
       method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify(
-        sources.map((sourceSlug) => ({
-          source_slug: sourceSlug,
-          target_type: rule.legacy_watch_artist_id ? "legacy_user" : rule.kind,
-          target_id: rule.legacy_watch_artist_id
-            ? `${userId}:${rule.legacy_watch_artist_id}`
-            : targetId,
-          user_id: userId,
-          priority: 10,
-          next_poll_at: new Date().toISOString(),
-          cadence_seconds: 1800,
-          lease_owner: null,
-          lease_expires_at: null,
-        })),
-      ),
+      headers: {
+        Prefer: `resolution=${resolution === "merge" ? "merge-duplicates" : "ignore-duplicates"},return=minimal`,
+      },
+      body: JSON.stringify(rows),
     },
   );
+};
+
+export const enqueuePollJobsForRule = async (
+  rule: WatchRule,
+  userId: string,
+): Promise<void> => {
+  await upsertPollJobs(buildPollJobRows({ ...rule, user_id: userId }, 10), "merge");
+};
+
+/**
+ * Add poll jobs for every followed artist that doesn't have them yet.
+ * Artists followed before the job queue existed never got any, so the
+ * dispatcher had nothing to run for them. Existing jobs are left alone.
+ */
+export const syncPollJobs = async (): Promise<number> => {
+  const pageSize = 500;
+  let synced = 0;
+  for (let offset = 0; ; offset += pageSize) {
+    const rules = await supabaseRequest<PollJobRule[]>(
+      `/watch_rules?select=id,user_id,kind,artist_id,venue_id,legacy_watch_artist_id&legacy_watch_artist_id=not.is.null&order=id&limit=${pageSize}&offset=${offset}`,
+    );
+    await upsertPollJobs(rules.flatMap((rule) => buildPollJobRows(rule, 10)), "ignore");
+    synced += rules.length;
+    if (rules.length < pageSize) return synced;
+  }
 };
 
 export const queueUserRefresh = async (userId: string): Promise<number> => {
@@ -350,20 +384,12 @@ export const queueUserRefresh = async (userId: string): Promise<number> => {
     return artists.length * 2;
   }
 
-  await supabaseRequest<void>(
-    `/poll_jobs?user_id=eq.${encodeURIComponent(userId)}`,
-    {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({
-        next_poll_at: new Date().toISOString(),
-        priority: 100,
-        lease_owner: null,
-        lease_expires_at: null,
-      }),
-    },
-  );
-  return rules.length * 6;
+  // Upsert rather than PATCH so artists with no jobs yet get them too.
+  const rows = rules
+    .filter((rule) => rule.legacy_watch_artist_id)
+    .flatMap((rule) => buildPollJobRows(rule, 100));
+  await upsertPollJobs(rows, "merge");
+  return rows.length;
 };
 
 export const claimPollJobs = async (
@@ -396,6 +422,28 @@ export const completePollJob = async (
   });
 };
 
+/** Release a job the dispatcher can't run yet and push it out of the way. */
+export const deferPollJob = async (
+  job: PollJob,
+  reason: string,
+  delaySeconds = 86400,
+): Promise<void> => {
+  await supabaseRequest<void>(`/poll_jobs?id=eq.${encodeURIComponent(job.id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      next_poll_at: new Date(Date.now() + delaySeconds * 1000).toISOString(),
+      lease_owner: null,
+      lease_expires_at: null,
+      last_error: reason.slice(0, 1000),
+    }),
+  });
+};
+
+// Sources are polled once a day, and the scheduled run can drift by hours,
+// so a source only counts as stale after a missed day plus slack.
+const MIN_STALE_AFTER_SECONDS = 36 * 3600;
+
 export const listSourceStatuses = async (): Promise<SourceStatus[]> => {
   const rows = await supabaseRequest<Omit<SourceStatus, "stale">[]>(
     "/source_health?select=*&order=source_slug",
@@ -415,7 +463,8 @@ export const listSourceStatuses = async (): Promise<SourceStatus[]> => {
     enabled: enabledByConfig[row.source_slug] ?? row.enabled,
     stale:
       !row.last_success_at ||
-      now - new Date(row.last_success_at).getTime() > row.stale_after_seconds * 1000,
+      now - new Date(row.last_success_at).getTime() >
+        Math.max(row.stale_after_seconds, MIN_STALE_AFTER_SECONDS) * 1000,
     };
   });
 };
@@ -452,6 +501,10 @@ export const deleteWatchArtist = async (
         Prefer: "return=minimal",
       },
     },
+  );
+  await supabaseRequest<void>(
+    `/poll_jobs?target_type=eq.legacy_user&target_id=eq.${encodeURIComponent(`${userId}:${id}`)}`,
+    { method: "DELETE", headers: { Prefer: "return=minimal" } },
   );
 };
 
