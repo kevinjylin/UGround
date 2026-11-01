@@ -4,7 +4,7 @@ import test from "node:test";
 import { parseSpotifyPlaylistId } from "./sources/spotify";
 import { dedupeEvents, movedEarlier } from "./utils";
 import { legacyWatchArtistSchema, listLimitSchema, watchRuleSchema } from "./validation";
-import type { NormalizedEvent } from "./types";
+import type { AlertType, NormalizedEvent } from "./types";
 
 test("request validation clamps public inputs", () => {
   assert.equal(listLimitSchema.parse("200"), 200);
@@ -78,4 +78,25 @@ test("production migration enables RLS and atomic job/alert claims", async () =>
   assert.match(migration, /for update skip locked/i);
   assert.match(migration, /unique index if not exists alerts_idempotency_key_idx/i);
   assert.match(migration, /sms_confirmation_attempts >= 5/i);
+});
+
+test("alert migration allows every alert type the poller emits", async () => {
+  const migration = await readFile(
+    new URL("../../../supabase/migrations/20261101000100_fix_alert_creation.sql", import.meta.url),
+    "utf8",
+  );
+  const alertTypes: AlertType[] = [
+    "new_event",
+    "status_changed",
+    "ticket_url_changed",
+    "on_sale_moved_earlier",
+    "presale_announced",
+    "presale_opened",
+    "public_sale_announced",
+    "public_sale_opened",
+  ];
+  for (const alertType of alertTypes) {
+    assert.ok(migration.includes(`'${alertType}'`), `${alertType} missing from alerts_alert_type_check`);
+  }
+  assert.match(migration, /#variable_conflict use_column/);
 });
