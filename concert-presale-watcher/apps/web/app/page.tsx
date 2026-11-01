@@ -1,1469 +1,591 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import Hls from "hls.js";
-import styles from "./landing.module.css";
+import { ArrowRight, ArrowUpRight, Bell, ListMusic, Rss, Settings } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { StageScene } from "@/components/stage-scene";
+import { Dot, StatusDot } from "@/components/status-dot";
+import { Ticket } from "@/components/ticket";
+import { cn } from "@/lib/cn";
+import { dateParts, type Tone } from "@/lib/eventDisplay";
+import Logo from "./components/Logo";
 
-// ── Asset URLs ──────────────────────────────────────────────────────────────
-const PROCESS_HLS =
-  "https://stream.mux.com/9JXDljEVWYwWu01PUkAemafDugK89o01BR6zqJ3aS9u00A.m3u8";
-const STATS_HLS =
-  "https://stream.mux.com/NcU3HlHeF7CUL86azTTzpy3Tlb00d6iF3BmCdFslMJYM.m3u8";
-const CTA_HLS =
-  "https://stream.mux.com/8wrHPCX2dC3msyYU9ObwqNdm00u3ViXvOSHUMRYSEe5Q.m3u8";
+interface SampleChange {
+  when: string;
+  artist: string;
+  place: string;
+  /** Noon UTC so the weekday is right in every US time zone. */
+  date: string;
+  from?: string;
+  to: string;
+  tone: Tone;
+  status: { label: string; tone: Tone };
+  sent: string;
+}
 
-const SOURCES = ["Ticketmaster", "Songkick", "Bandsintown", "Partner feeds"];
+// Illustrative rows for the product preview. Labeled as sample data on the page.
+const SAMPLE_FEED: SampleChange[] = [
+  {
+    when: "just now",
+    artist: "MJ Lenderman",
+    place: "The Echo · Los Angeles, CA",
+    date: "2026-12-04T18:00:00Z",
+    from: "Scheduled",
+    to: "On sale",
+    tone: "positive",
+    status: { label: "On sale", tone: "positive" },
+    sent: "Email, Discord",
+  },
+  {
+    when: "4m ago",
+    artist: "Slow Pulp",
+    place: "9:30 Club · Washington, DC",
+    date: "2027-01-03T18:00:00Z",
+    to: "New show announced",
+    tone: "brand",
+    status: { label: "Scheduled", tone: "neutral" },
+    sent: "Discord",
+  },
+  {
+    when: "2h ago",
+    artist: "Wednesday",
+    place: "Lincoln Hall · Chicago, IL",
+    date: "2026-12-21T18:00:00Z",
+    to: "Presale Mon, Nov 2 at 10 AM",
+    tone: "brand",
+    status: { label: "Scheduled", tone: "neutral" },
+    sent: "SMS",
+  },
+  {
+    when: "5h ago",
+    artist: "Geese",
+    place: "Bowery Ballroom · New York, NY",
+    date: "2026-11-22T18:00:00Z",
+    from: "Nov 6",
+    to: "On sale Nov 5",
+    tone: "brand",
+    status: { label: "Scheduled", tone: "neutral" },
+    sent: "Email",
+  },
+  {
+    when: "1d ago",
+    artist: "Hotline TNT",
+    place: "Empty Bottle · Chicago, IL",
+    date: "2026-11-12T18:00:00Z",
+    from: "On sale",
+    to: "Cancelled",
+    tone: "danger",
+    status: { label: "Cancelled", tone: "danger" },
+    sent: "Email",
+  },
+];
 
-// ── Icons ───────────────────────────────────────────────────────────────────
-function ArrowUpRight({ size = 14, stroke = 1.5 }: { size?: number; stroke?: number }) {
+const TRIGGERS: { term: string; detail: string; tone: Tone }[] = [
+  { term: "New show", detail: "A date is announced for an artist, venue, or area you follow.", tone: "brand" },
+  { term: "Presale announced", detail: "A presale window shows up, with its start time and link.", tone: "brand" },
+  { term: "Presale opened", detail: "The presale window starts.", tone: "positive" },
+  { term: "On-sale date announced", detail: "The general on-sale time is published.", tone: "brand" },
+  { term: "On sale", detail: "General on-sale starts.", tone: "positive" },
+  { term: "On-sale moved earlier", detail: "The on-sale time moves up. The easiest one to miss.", tone: "brand" },
+  { term: "Status changed", detail: "A show is cancelled, postponed, rescheduled, or comes off sale.", tone: "neutral" },
+  { term: "Ticket link changed", detail: "The official ticket URL changes, so your saved link still works.", tone: "neutral" },
+];
+
+const SOURCES: { name: string; access: string; provides: string; enabled: boolean }[] = [
+  { name: "Ticketmaster", access: "Official API", provides: "Events, presale windows, public on-sale times", enabled: true },
+  { name: "Songkick", access: "Partner feed", provides: "Tour dates and cancellations", enabled: true },
+  { name: "Bandsintown", access: "Partner feed", provides: "Tour dates", enabled: true },
+  { name: "Eventbrite, AXS, DICE", access: "Not connected", provides: "Off until partner access is approved", enabled: false },
+];
+
+const STEPS: { title: string; body: string; specs: [string, string][] }[] = [
+  {
+    title: "Follow what you'd actually go to",
+    body: "Add artists by name, or paste a public Spotify playlist and pick who to keep. Add a venue, or everything within a radius of your city.",
+    specs: [
+      ["Artist", "Wednesday"],
+      ["Venue", "Empty Bottle, Chicago"],
+      ["Radius", "25 mi around Chicago"],
+    ],
+  },
+  {
+    title: "UGround checks the sources",
+    body: "Everything you follow is checked once a day from a shared queue. Each source reports when it last succeeded, so a stale feed never looks like a quiet one.",
+    specs: [
+      ["Schedule", "Once a day"],
+      ["Refresh", "Moves your checks to the front of the queue"],
+      ["Failures", "Retried with backoff"],
+    ],
+  },
+  {
+    title: "You hear about changes, not listings",
+    body: "Each show is compared with the last check, so you get one alert per change instead of a calendar of every show in town.",
+    specs: [
+      ["Email", "Confirmed address"],
+      ["Discord", "Any channel webhook"],
+      ["SMS", "Confirmed number"],
+    ],
+  },
+];
+
+function Container({ className, children }: { className?: string; children: React.ReactNode }) {
+  return <div className={cn("mx-auto w-full max-w-6xl px-4 sm:px-6", className)}>{children}</div>;
+}
+
+function Header() {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
-      <line x1="7" y1="17" x2="17" y2="7" />
-      <polyline points="7 7 17 7 17 17" />
-    </svg>
-  );
-}
-function PlayIcon({ size = 12 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
-      <polygon points="6 4 20 12 6 20 6 4" />
-    </svg>
-  );
-}
-function ZapIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  );
-}
-function RadarIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="6" />
-      <circle cx="12" cy="12" r="2" fill="currentColor" />
-      <line x1="12" y1="12" x2="20" y2="6" />
-    </svg>
-  );
-}
-function BellIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16l-2-2z" />
-      <path d="M10 21a2 2 0 0 0 4 0" />
-    </svg>
-  );
-}
-function ListIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="8" y1="6" x2="21" y2="6" />
-      <line x1="8" y1="12" x2="21" y2="12" />
-      <line x1="8" y1="18" x2="21" y2="18" />
-      <circle cx="4" cy="6" r="1.2" fill="currentColor" />
-      <circle cx="4" cy="12" r="1.2" fill="currentColor" />
-      <circle cx="4" cy="18" r="1.2" fill="currentColor" />
-    </svg>
-  );
-}
-function MenuIcon({ open, size = 18 }: { open: boolean; size?: number }) {
-  return open ? (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-      <line x1="6" y1="6" x2="18" y2="18" />
-      <line x1="18" y1="6" x2="6" y2="18" />
-    </svg>
-  ) : (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-      <line x1="4" y1="7" x2="20" y2="7" />
-      <line x1="4" y1="12" x2="20" y2="12" />
-      <line x1="4" y1="17" x2="20" y2="17" />
-    </svg>
-  );
-}
-
-// ── Animation primitives ────────────────────────────────────────────────────
-interface BlurTextProps {
-  text: string;
-  delay?: number;
-  className?: string;
-  as?: keyof React.JSX.IntrinsicElements;
-  style?: React.CSSProperties;
-  splitBy?: "word" | "char";
-}
-
-function BlurText({
-  text,
-  delay = 80,
-  className = "",
-  as: As = "h1",
-  style = {},
-  splitBy = "word",
-}: BlurTextProps) {
-  const [el, setEl] = useState<HTMLElement | null>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            setVisible(true);
-            io.disconnect();
-          }
-        });
-      },
-      { threshold: 0.15 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [el]);
-
-  const parts = splitBy === "word" ? text.split(/(\s+)/) : text.split("");
-  const Tag = As as React.ElementType;
-
-  return (
-    <Tag
-      ref={(node: HTMLElement | null) => setEl(node)}
-      className={className}
-      style={style}
-      aria-label={text}
-    >
-      {parts.map((p, i) => {
-        if (/^\s+$/.test(p)) return <span key={i}>{p}</span>;
-        const d = (i * delay) / 1000;
-        return (
-          <span
-            key={i}
-            style={{
-              display: "inline-block",
-              filter: visible ? "blur(0px)" : "blur(10px)",
-              opacity: visible ? 1 : 0,
-              transform: visible ? "translateY(0)" : "translateY(40px)",
-              transition: `filter 700ms cubic-bezier(0.2,0.7,0.2,1) ${d}s, opacity 700ms cubic-bezier(0.2,0.7,0.2,1) ${d}s, transform 700ms cubic-bezier(0.2,0.7,0.2,1) ${d}s`,
-              willChange: "filter, opacity, transform",
-            }}
+    <header className="relative z-10 border-b">
+      <Container className="flex h-16 items-center justify-between gap-6">
+        <Link href="/" aria-label="UGround home" className="rounded-md">
+          <Logo size={22} />
+        </Link>
+        <nav aria-label="Primary" className="flex items-center gap-1 text-sm">
+          <a
+            href="#how"
+            className="hidden rounded-md px-3 py-2 text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
           >
-            {p}
-          </span>
-        );
-      })}
-    </Tag>
-  );
-}
-
-interface BlurInProps {
-  delay?: number;
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-  className?: string;
-}
-
-function BlurIn({ delay = 0, children, style = {}, className = "" }: BlurInProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (es) =>
-        es.forEach((e) => {
-          if (e.isIntersecting) {
-            setVisible(true);
-            io.disconnect();
-          }
-        }),
-      { threshold: 0.15 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      className={className}
-      style={{
-        ...style,
-        filter: visible ? "blur(0px)" : "blur(10px)",
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(20px)",
-        transition: `filter 600ms ease ${delay}s, opacity 600ms ease ${delay}s, transform 600ms ease ${delay}s`,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-// ── HLS video ───────────────────────────────────────────────────────────────
-function useHls(src: string) {
-  const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const v = ref.current;
-    if (!v || !src) return;
-    let hlsInstance: Hls | undefined;
-    if (v.canPlayType("application/vnd.apple.mpegurl")) {
-      v.src = src;
-    } else if (Hls.isSupported()) {
-      hlsInstance = new Hls({ enableWorker: false });
-      hlsInstance.loadSource(src);
-      hlsInstance.attachMedia(v);
-    } else {
-      v.src = src;
-    }
-    return () => {
-      if (hlsInstance) hlsInstance.destroy();
-    };
-  }, [src]);
-  return ref;
-}
-
-function HlsVideo({
-  src,
-  className,
-  saturate = 1,
-}: {
-  src: string;
-  className?: string;
-  saturate?: number;
-}) {
-  const ref = useHls(src);
-  return (
-    <video
-      ref={ref}
-      className={className ?? styles.videoBg}
-      autoPlay
-      loop
-      muted
-      playsInline
-      style={{ filter: saturate === 1 ? "none" : `saturate(${saturate})` }}
-    />
-  );
-}
-
-// ── Watchlist mockup (Coverage feature) ─────────────────────────────────────
-function WatchlistMock() {
-  const rows = [
-    { artist: "Geese", venue: "Bowery Ballroom · NYC", status: "WATCHING", tone: "ok" as const },
-    { artist: "MJ Lenderman", venue: "The Echo · Los Angeles", status: "ON SALE", tone: "live" as const },
-    { artist: "Wednesday", venue: "Lincoln Hall · Chicago", status: "PRESALE FRI", tone: "warn" as const },
-    { artist: "Hotline TNT", venue: "Empty Bottle · Chicago", status: "WATCHING", tone: "ok" as const },
-    { artist: "Slow Pulp", venue: "9:30 Club · DC", status: "+2 DATES", tone: "new" as const },
-  ];
-  const tones: Record<string, string> = {
-    ok: "rgba(255,255,255,0.55)",
-    live: "#65d28b",
-    warn: "#f5b46a",
-    new: "#9bb8ff",
-  };
-  return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        padding: 20,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        background:
-          "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,0.06), transparent 60%), #0a0a0b",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 6,
-        }}
-      >
-        <div className={styles.eyebrow} style={{ fontSize: 9 }}>
-          YOUR WATCHLIST
-        </div>
-        <div className={styles.tiny} style={{ color: "rgba(255,255,255,0.4)" }}>
-          5 ARTISTS · 12 CITIES
-        </div>
-      </div>
-      {rows.map((r) => (
-        <div
-          key={r.artist}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            padding: "10px 14px",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 12,
-            background: "rgba(255,255,255,0.03)",
-          }}
-        >
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div className={styles.fontHeading} style={{ fontSize: 18, lineHeight: 1 }}>
-              {r.artist}
-            </div>
-            <div className={styles.tiny} style={{ marginTop: 4, color: "rgba(255,255,255,0.55)" }}>
-              {r.venue}
-            </div>
-          </div>
-          <div
-            style={{
-              fontSize: 10,
-              letterSpacing: "0.16em",
-              color: tones[r.tone],
-              padding: "4px 8px",
-              borderRadius: 999,
-              border: `1px solid ${tones[r.tone]}33`,
-              background: `${tones[r.tone]}10`,
-              whiteSpace: "nowrap",
-            }}
+            How it works
+          </a>
+          <a
+            href="#sources"
+            className="hidden rounded-md px-3 py-2 text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
           >
-            {r.status}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Alert feed mockup (Detection feature) ───────────────────────────────────
-function AlertFeedMock() {
-  const items = [
-    {
-      kind: "STATUS FLIP",
-      tone: "#f5b46a",
-      artist: "MJ Lenderman",
-      where: "The Echo · Los Angeles",
-      time: "12 sec ago",
-      detail: "Ticketmaster moved to ON SALE",
-    },
-    {
-      kind: "NEW DATE",
-      tone: "#9bb8ff",
-      artist: "Slow Pulp",
-      where: "9:30 Club · Washington DC",
-      time: "4 min ago",
-      detail: "Songkick listed 2 added shows in your radius",
-    },
-    {
-      kind: "PRESALE OPEN",
-      tone: "#65d28b",
-      artist: "Wednesday",
-      where: "Lincoln Hall · Chicago",
-      time: "2 hr ago",
-      detail: "Presale window added by a connected source",
-    },
-  ];
-  return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        padding: 20,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        background:
-          "radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,0.06), transparent 60%), #0a0a0b",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 4,
-        }}
-      >
-        <div className={styles.eyebrow} style={{ fontSize: 9 }}>
-          LIVE FEED
-        </div>
-        <div
-          className={styles.tiny}
-          style={{ display: "flex", alignItems: "center", gap: 6, color: "rgba(255,255,255,0.4)" }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 999,
-              background: "#65d28b",
-              display: "inline-block",
-            }}
-          />
-          ADAPTIVE SOURCE CHECKS
-        </div>
-      </div>
-      {items.map((it) => (
-        <div
-          key={it.artist}
-          style={{
-            padding: "12px 14px",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 14,
-            background: "rgba(255,255,255,0.03)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <div
-              style={{
-                fontSize: 9,
-                letterSpacing: "0.18em",
-                color: it.tone,
-              }}
-            >
-              {it.kind}
-            </div>
-            <div className={styles.tiny} style={{ color: "rgba(255,255,255,0.4)" }}>
-              {it.time}
-            </div>
-          </div>
-          <div className={styles.fontHeading} style={{ fontSize: 20, lineHeight: 1, marginTop: 6 }}>
-            {it.artist}
-          </div>
-          <div className={styles.tiny} style={{ color: "rgba(255,255,255,0.55)", marginTop: 4 }}>
-            {it.where}
-          </div>
-          <div className={styles.body} style={{ fontSize: 12, marginTop: 8 }}>
-            {it.detail}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Masthead ────────────────────────────────────────────────────────────────
-function Masthead() {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
-
-  const closeMenu = () => setMenuOpen(false);
-
-  return (
-    <header
-      style={{ position: "fixed", top: 16, left: 0, right: 0, zIndex: 50, padding: "0 32px" }}
-    >
-      <div className={styles.shell} style={{ padding: 0, position: "relative" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 24px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <Link
-              href="/"
-              className={styles.liquidGlass}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                textDecoration: "none",
-              }}
-              aria-label="UGround"
-            >
-              <span className={styles.fontHeading} style={{ fontSize: 22, lineHeight: 1, color: "#fff" }}>
-                U
-              </span>
-            </Link>
-          </div>
-
-          <nav
-            className={`${styles.liquidGlass} ${styles.navDesktop}`}
-            style={{
-              borderRadius: 999,
-              padding: "6px 8px",
-              alignItems: "center",
-              gap: 2,
-            }}
+            Sources
+          </a>
+          <Link
+            href="/login"
+            className="rounded-md px-3 py-2 text-foreground transition-colors hover:text-muted-foreground"
           >
-            <Link
-              href="/login"
-              style={{
-                padding: "8px 14px",
-                fontSize: 13,
-                color: "rgba(255,255,255,0.85)",
-                textDecoration: "none",
-                fontWeight: 400,
-              }}
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signup"
-              className={styles.btnWhite}
-              style={{ marginLeft: 6, padding: "6px 14px", fontSize: 12 }}
-            >
-              Start watching <ArrowUpRight size={12} />
-            </Link>
-          </nav>
-
-          <button
-            type="button"
-            className={`${styles.liquidGlass} ${styles.navMobileBtn}`}
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-expanded={menuOpen}
-            aria-controls="mobile-nav-panel"
-            aria-label="Toggle menu"
-          >
-            <MenuIcon open={menuOpen} />
-          </button>
-        </div>
-
-        {menuOpen && (
-          <div
-            id="mobile-nav-panel"
-            className={`${styles.liquidGlassStrong} ${styles.navMobilePanel}`}
-          >
-            <Link href="/login" className={styles.navMobileLink} onClick={closeMenu}>
-              Sign in
-            </Link>
-            <Link href="/signup" className={styles.navMobileLink} onClick={closeMenu}>
-              Start watching
-            </Link>
-          </div>
-        )}
-      </div>
+            Sign in
+          </Link>
+          <Button asChild size="sm" className="ml-2 px-3">
+            <Link href="/signup">Start watching</Link>
+          </Button>
+        </nav>
+      </Container>
     </header>
   );
 }
 
-// ── Hero ────────────────────────────────────────────────────────────────────
+/** The hero's one bright element: the show that just went on sale, as a ticket. */
+function HeroTicket() {
+  const show = SAMPLE_FEED[0]!;
+  return (
+    <figure className="relative mx-auto w-full max-w-[520px] py-10 lg:mx-0 lg:ml-auto">
+      <figcaption className="sr-only">
+        Sample alert: MJ Lenderman at The Echo just went on sale. Sent by email and Discord.
+      </figcaption>
+      <div className="absolute -top-1 left-8 z-10 sm:left-12">
+        <Annotation>Scheduled → On sale</Annotation>
+        <span aria-hidden="true" className="ml-6 block h-6 w-px bg-foreground/20" />
+      </div>
+      <Ticket
+        size="lg"
+        date={dateParts(show.date)}
+        className="-rotate-2 shadow-[0_32px_64px_-16px_rgb(0_0_0/0.7),inset_0_1px_0_rgb(255_255_255/0.05)]"
+      >
+        <div className="min-w-0 pt-1">
+          <p className="truncate text-[22px] leading-7 font-medium tracking-[-0.01em]">{show.artist}</p>
+          <p className="mt-1 truncate text-[15px] text-muted-foreground">{show.place}</p>
+        </div>
+        <dl className="hidden gap-1.5 font-mono text-xs sm:grid">
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">Artist presale</dt>
+            <dd className="text-muted-foreground">Oct 28, 10:00 AM</dd>
+          </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">General on-sale</dt>
+            <dd className="text-foreground">Oct 30, 10:00 AM</dd>
+          </div>
+        </dl>
+        <div className="flex items-center justify-between gap-3 border-t border-dashed pt-4">
+          <StatusDot tone="positive">On sale</StatusDot>
+          <span className="inline-flex h-8 items-center gap-1 rounded-md border border-input px-3 text-sm">
+            Tickets
+            <ArrowUpRight aria-hidden="true" className="size-4 text-muted-foreground" />
+          </span>
+        </div>
+      </Ticket>
+      <div className="absolute right-4 -bottom-1 z-10 flex flex-col items-end sm:right-8">
+        <span aria-hidden="true" className="mr-6 block h-6 w-px bg-foreground/20" />
+        <Annotation>Sent · email, Discord</Annotation>
+      </div>
+    </figure>
+  );
+}
+
+function Annotation({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex h-7 items-center rounded-md border bg-card px-2.5 font-mono text-xs text-muted-foreground">
+      {children}
+    </span>
+  );
+}
+
 function Hero() {
   return (
-    <section style={{ position: "relative", overflow: "hidden", paddingTop: 88, paddingBottom: 64 }}>
-      <div className={styles.heroBackdrop} aria-hidden="true" />
-      <div className={styles.fadeBottomTall} />
-
-      <div className={`${styles.shell} ${styles.z10}`}>
-        {/* Brand rule */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            paddingBottom: 14,
-            borderBottom: "1px solid rgba(255,255,255,0.18)",
-            marginBottom: 32,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            className={styles.fontHeading}
-            style={{ fontSize: "clamp(22px, 2.4vw, 32px)", lineHeight: 1 }}
+    <section aria-labelledby="hero-heading" className="relative isolate">
+      {/* The crowd sits behind the ticket; the headline keeps the dark side. */}
+      <StageScene
+        priority
+        imageClassName="object-[24%_60%] lg:object-[62%_70%]"
+        className="-z-10 inset-x-0 -top-16 bottom-0 opacity-55 [mask-image:linear-gradient(to_bottom,rgb(0_0_0/0.3),#000_65%,transparent)] lg:left-[36%] lg:opacity-100 lg:[mask-image:radial-gradient(60%_62%_at_55%_52%,#000_45%,transparent)]"
+      />
+      <Container className="grid items-center gap-8 pt-14 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16 lg:pt-20 lg:pb-16">
+        <div className="max-w-xl">
+          <h1
+            id="hero-heading"
+            className="font-display text-[52px] leading-[0.95] tracking-[-0.01em] text-balance sm:text-[72px] lg:text-[84px]"
           >
-            UGround
-          </div>
-          <div className={styles.eyebrow}>
-            Free while in beta · adaptive source checks · measured freshness
-          </div>
-        </div>
-
-        {/* Hero spread */}
-        <div className={styles.heroGrid}>
-          <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <div>
-              <BlurIn>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <div
-                    className={`${styles.liquidGlass} ${styles.pill}`}
-                    style={{ paddingLeft: 6, paddingRight: 14, borderRadius: 999 }}
-                  >
-                    <span
-                      style={{
-                        background: "#fff",
-                        color: "#0a0a0b",
-                        padding: "3px 10px",
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      New
-                    </span>
-                    <span style={{ fontSize: 12 }}>Watchlist-powered presale alerts.</span>
-                  </div>
-                </div>
-              </BlurIn>
-              <BlurText
-                text="Catch the show before the feed wakes up."
-                delay={90}
-                as="h1"
-                className={styles.hMega}
-                style={{ marginTop: 18, maxWidth: 760 }}
-              />
-              <BlurIn delay={0.6}>
-                <p
-                  className={styles.lead}
-                  style={{ maxWidth: 540, marginTop: 20, color: "rgba(255,255,255,0.85)" }}
-                >
-                  Follow the artists, venues, and cities you actually care about. UGround watches
-                  approved ticket sources and surfaces changes as checks complete.
-                </p>
-              </BlurIn>
-            </div>
-            <BlurIn delay={1.0}>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 14,
-                  alignItems: "center",
-                  marginTop: 32,
-                  flexWrap: "wrap",
-                }}
-              >
-                <Link
-                  href="/signup"
-                  className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
-                  style={{ borderRadius: 999, padding: "12px 22px", fontSize: 14 }}
-                >
-                  Start watching <ArrowUpRight size={14} />
-                </Link>
-                <a href="#how" className={styles.btnText}>
-                  <span
-                    className={styles.liquidGlass}
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <PlayIcon size={10} />
-                  </span>
-                  See how it works
-                </a>
-              </div>
-            </BlurIn>
-          </div>
-
-          {/* Right: live wire portrait card */}
-          <BlurIn delay={0.3}>
-            <div
-              className={styles.liquidGlass}
-              style={{
-                borderRadius: 24,
-                overflow: "hidden",
-                height: "100%",
-                minHeight: 460,
-                position: "relative",
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/concert-crowd.jpg"
-                alt="A packed concert crowd under red stage lights"
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "linear-gradient(180deg, transparent 55%, rgba(0,0,0,0.75) 100%)",
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  left: 16,
-                  bottom: 14,
-                  right: 16,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-end",
-                }}
-              >
-                <div>
-                  <div className={styles.eyebrow} style={{ fontSize: 9 }}>
-                    COVER · 04.12
-                  </div>
-                  <div className={styles.fontHeading} style={{ fontSize: 22, lineHeight: 1 }}>
-                    Tonight&rsquo;s wire
-                  </div>
-                </div>
-                <div
-                  className={`${styles.liquidGlass} ${styles.pill}`}
-                  style={{ borderRadius: 999, padding: "4px 10px", fontSize: 10 }}
-                >
-                  ● LIVE
-                </div>
-              </div>
-            </div>
-          </BlurIn>
-        </div>
-
-        {/* Sources marquee */}
-        <div
-          style={{
-            marginTop: 56,
-            paddingTop: 24,
-            borderTop: "1px dashed rgba(255,255,255,0.18)",
-            overflow: "hidden",
-          }}
-        >
-          <div className={styles.eyebrow} style={{ marginBottom: 16 }}>
-            WATCHING THE SOURCES YOU ALREADY USE
-          </div>
-          <div
-            style={{
-              overflow: "hidden",
-              maskImage:
-                "linear-gradient(to right, transparent, #000 8%, #000 92%, transparent)",
-            }}
-          >
-            <div className={styles.marquee}>
-              {[...SOURCES, ...SOURCES, ...SOURCES].map((p, i) => (
-                <span
-                  key={i}
-                  className={styles.fontHeading}
-                  style={{
-                    fontSize: "clamp(28px, 3.4vw, 44px)",
-                    color: "rgba(255,255,255,0.9)",
-                    lineHeight: 1,
-                  }}
-                >
-                  {p}
-                  <span style={{ marginLeft: 72, color: "rgba(255,255,255,0.25)" }}>◆</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ── Process — How It Works ──────────────────────────────────────────────────
-function ProcessSection() {
-  return (
-    <section id="how" style={{ position: "relative", overflow: "hidden", padding: "140px 0" }}>
-      <HlsVideo src={PROCESS_HLS} />
-      <div className={styles.dimOverlay} style={{ background: "rgba(0,0,0,0.6)" }} />
-      <div className={styles.fadeTop} />
-      <div className={styles.fadeBottom} />
-
-      <div className={`${styles.shell} ${styles.z10}`}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            marginBottom: 32,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <div className={`${styles.liquidGlass} ${styles.pill}`} style={{ borderRadius: 999 }}>
-            Chapter I · How it works
-          </div>
-        </div>
-
-        <BlurText
-          text="You follow. We watch. You go."
-          className={styles.hSection}
-          as="h2"
-          style={{ maxWidth: 900, marginBottom: 24 }}
-          delay={70}
-        />
-        <BlurIn delay={0.3}>
-          <p className={styles.lead} style={{ maxWidth: 620, marginBottom: 36 }}>
-            Tell UGround which artists and venues matter. Adaptive checks prioritize active sales
-            and surface meaningful ticket changes without wasting source quotas.
+            Know when your artists go on sale
+          </h1>
+          <p className="mt-6 max-w-[34rem] text-lg leading-7 text-foreground/75">
+            Follow artists, venues, and cities. UGround checks Ticketmaster, Songkick, and
+            Bandsintown every day and alerts you by email, Discord, or SMS when a show is
+            announced, a presale opens, or tickets go on sale.
           </p>
-        </BlurIn>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Button asChild size="lg" className="h-11 px-5 text-[15px]">
+              <Link href="/signup">
+                Start watching
+                <ArrowRight aria-hidden="true" />
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="h-11 px-5 text-[15px]">
+              <a href="#how">How it works</a>
+            </Button>
+          </div>
+        </div>
+        <HeroTicket />
+      </Container>
+    </section>
+  );
+}
 
-        <div className={styles.processGrid}>
-          {[
-            ["01", "Follow", "Add artists, venues, and cities to your watchlist in seconds."],
-            ["02", "Watch", "Adaptive checks run more often around active sales and recent changes."],
-            ["03", "Detect", "Status flips, new dates, and presale windows are normalized into one feed."],
-            ["04", "Notify", "Email, Discord, SMS — your fastest channel wins. We don't sit on a flip."],
-          ].map(([n, t, d], i, arr) => (
-            <div
-              key={n}
-              style={{
-                padding: "32px 24px 32px 0",
-                borderRight:
-                  i < arr.length - 1 ? "1px dashed rgba(255,255,255,0.18)" : "none",
-                paddingLeft: i === 0 ? 0 : 24,
-              }}
-            >
-              <div className={styles.numplate} style={{ marginBottom: 12 }}>
-                {n}
-              </div>
-              <div className={styles.fontHeading} style={{ fontSize: 28, lineHeight: 1, marginBottom: 8 }}>
-                {t}
-              </div>
-              <div className={styles.body} style={{ color: "rgba(255,255,255,0.7)" }}>
-                {d}
-              </div>
-            </div>
+/** Where UGround looks, set large like a bill of acts. */
+function SourceStrip() {
+  return (
+    <section aria-label="Sources checked" className="border-t">
+      <Container className="flex flex-col gap-3 py-10 sm:flex-row sm:items-baseline sm:justify-between sm:gap-8 sm:py-12">
+        <p className="shrink-0 text-sm text-muted-foreground">Checked every day</p>
+        <ul className="flex flex-wrap items-baseline gap-x-6 gap-y-1 font-display text-[32px] leading-tight text-foreground/90 sm:text-[44px] lg:gap-x-10">
+          {SOURCES.filter((source) => source.enabled).map((source, i) => (
+            <li key={source.name} className="flex items-baseline gap-6 lg:gap-10">
+              {i > 0 ? (
+                <span aria-hidden="true" className="size-2 translate-y-[-0.3em] rounded-full bg-brand" />
+              ) : null}
+              {source.name}
+            </li>
           ))}
-        </div>
-
-        <div style={{ marginTop: 40 }}>
-          <Link
-            href="/signup"
-            className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
-            style={{ borderRadius: 999, padding: "14px 24px", fontSize: 14 }}
-          >
-            Start watching <ArrowUpRight size={14} />
-          </Link>
-        </div>
-      </div>
+        </ul>
+      </Container>
     </section>
   );
 }
 
-// ── Coverage / Detection (chess) ────────────────────────────────────────────
-function FeaturesChess() {
+function PreviewNav({ icon: Icon, label, active, count }: {
+  icon: typeof Rss;
+  label: string;
+  active?: boolean;
+  count?: number;
+}) {
   return (
-    <section id="sources" style={{ background: "#000", padding: "120px 0" }}>
-      <div className={styles.shell}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            marginBottom: 40,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div
-              className={`${styles.liquidGlass} ${styles.pill}`}
-              style={{ borderRadius: 999, marginBottom: 18, display: "inline-flex" }}
-            >
-              Chapter II · Coverage
-            </div>
-            <BlurText
-              text="Watch wide. Notify narrow."
-              className={styles.hSection}
-              as="h2"
-              style={{ maxWidth: 900 }}
-              delay={70}
-            />
-          </div>
-        </div>
-
-        {/* Row 1: Watchlist coverage */}
-        <div
-          className={styles.chess}
-          style={{
-            gridTemplateColumns: "1fr 1.3fr",
-            gap: 56,
-            alignItems: "center",
-            paddingTop: 56,
-            paddingBottom: 56,
-            borderTop: "1px dashed rgba(255,255,255,0.18)",
-          }}
-        >
-          <BlurIn>
-            <div className={styles.eyebrow} style={{ marginBottom: 14 }}>
-              Essay 01 · Watchlist
-            </div>
-            <h3
-              className={styles.fontHeading}
-              style={{
-                fontSize: "clamp(32px, 3.6vw, 52px)",
-                lineHeight: 1,
-                marginBottom: 20,
-                letterSpacing: "-0.015em",
-              }}
-            >
-              Follow the lane.
-              <br />
-              <span className={styles.hl}>Skip the firehose.</span>
-            </h3>
-            <p className={styles.body} style={{ marginBottom: 24, maxWidth: 480 }}>
-              Add artists, venues, cities, or radius rules. Import a Spotify playlist if that&rsquo;s
-              easier. UGround only watches what you actually care about — no calendar of every show
-              in the country, no algorithmic guesses.
-            </p>
-            <Link
-              href="/signup"
-              className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
-              style={{ borderRadius: 999, padding: "12px 22px", fontSize: 13 }}
-            >
-              Build your watchlist <ArrowUpRight size={13} />
-            </Link>
-          </BlurIn>
-          <BlurIn delay={0.2}>
-            <div
-              className={styles.liquidGlass}
-              style={{
-                borderRadius: 24,
-                overflow: "hidden",
-                aspectRatio: "16 / 11",
-                background: "#0a0a0b",
-              }}
-            >
-              <WatchlistMock />
-            </div>
-          </BlurIn>
-        </div>
-
-        {/* Row 2: Detection */}
-        <div
-          className={styles.chess}
-          style={{
-            gridTemplateColumns: "1.3fr 1fr",
-            gap: 56,
-            alignItems: "center",
-            paddingTop: 56,
-            paddingBottom: 56,
-            borderTop: "1px dashed rgba(255,255,255,0.18)",
-          }}
-        >
-          <BlurIn>
-            <div
-              className={styles.liquidGlass}
-              style={{
-                borderRadius: 24,
-                overflow: "hidden",
-                aspectRatio: "16 / 11",
-                background: "#0a0a0b",
-              }}
-            >
-              <AlertFeedMock />
-            </div>
-          </BlurIn>
-          <BlurIn delay={0.2}>
-            <div className={styles.eyebrow} style={{ marginBottom: 14 }}>
-              Essay 02 · Detection
-            </div>
-            <h3
-              className={styles.fontHeading}
-              style={{
-                fontSize: "clamp(32px, 3.6vw, 52px)",
-                lineHeight: 1,
-                marginBottom: 20,
-                letterSpacing: "-0.015em",
-              }}
-            >
-              We don&rsquo;t list shows.
-              <br />
-              <span className={styles.hl}>We list changes.</span>
-            </h3>
-            <p className={styles.body} style={{ marginBottom: 24, maxWidth: 480 }}>
-              Status flips from announced to on-sale. Presales cracking open early. New dates
-              landing in your radius. UGround surfaces the moment something becomes a ticket — and
-              gets out of the way otherwise.
-            </p>
-            <a
-              href="#numbers"
-              className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
-              style={{ borderRadius: 999, padding: "12px 22px", fontSize: 13 }}
-            >
-              See the numbers <ArrowUpRight size={13} />
-            </a>
-          </BlurIn>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ── Pull quote ──────────────────────────────────────────────────────────────
-function PullQuote() {
-  return (
-    <section style={{ padding: "120px 0", background: "#000" }}>
-      <div className={styles.shell}>
-        <div
-          style={{
-            borderTop: "2px solid rgba(255,255,255,0.85)",
-            borderBottom: "2px solid rgba(255,255,255,0.85)",
-            padding: "64px 24px",
-            textAlign: "center",
-            maxWidth: 1100,
-            margin: "0 auto",
-          }}
-        >
-          <BlurText
-            text="Source freshness should be measured, visible, and honest — not hidden behind a marketing promise."
-            className={styles.fontHeading}
-            as="h2"
-            style={{ fontSize: "clamp(32px, 4.5vw, 64px)", lineHeight: 1.05, letterSpacing: "-0.01em" }}
-            delay={40}
-          />
-          <div className={styles.eyebrow} style={{ marginTop: 28 }}>
-            — UGROUND PRODUCT PRINCIPLE
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ── Why Us ──────────────────────────────────────────────────────────────────
-type IconComp = ({ size }: { size?: number }) => React.ReactElement;
-
-function WhyUs() {
-  const items: [string, IconComp, string, string][] = [
-    ["A", ZapIcon, "Adaptive Freshness", "Active sales and recent changes receive priority while source quotas remain protected."],
-    ["B", ListIcon, "Watchlist-First", "You decide who's worth a ping. We don't pretend every show in your city is interesting."],
-    ["C", RadarIcon, "Measured Sources", "Official and approved partner feeds report their actual health and last successful check."],
-    ["D", BellIcon, "Your Channels", "Email, Discord, SMS. Pick one, pick three. Whichever buzzes loudest when it matters."],
-  ];
-
-  return (
-    <section style={{ background: "#000", padding: "120px 0" }}>
-      <div className={styles.shell}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            marginBottom: 40,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div
-              className={`${styles.liquidGlass} ${styles.pill}`}
-              style={{ borderRadius: 999, marginBottom: 18, display: "inline-flex" }}
-            >
-              Why UGround
-            </div>
-            <BlurText
-              text="The difference is the difference."
-              className={styles.hSection}
-              as="h2"
-              style={{ maxWidth: 900 }}
-              delay={70}
-            />
-          </div>
-          <div className={styles.eyebrow} style={{ opacity: 0.6 }}>
-            PP. 07
-          </div>
-        </div>
-
-        <div className={styles.grid4} style={{ marginTop: 24 }}>
-          {items.map(([k, Icon, t, d]) => (
-            <BlurIn key={k} delay={0.05 * "ABCD".indexOf(k)}>
-              <div
-                className={`${styles.liquidGlass} ${styles.cardLift}`}
-                style={{
-                  borderRadius: 20,
-                  padding: 26,
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: 28,
-                  }}
-                >
-                  <div
-                    className={styles.liquidGlassStrong}
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Icon size={18} />
-                  </div>
-                  <div
-                    className={styles.fontHeading}
-                    style={{ fontSize: 28, lineHeight: 1, color: "rgba(255,255,255,0.4)" }}
-                  >
-                    {k}
-                  </div>
-                </div>
-                <h4
-                  className={styles.fontHeading}
-                  style={{ fontSize: 28, lineHeight: 1, marginBottom: 12, letterSpacing: "-0.01em" }}
-                >
-                  {t}
-                </h4>
-                <p
-                  className={styles.body}
-                  style={{ color: "rgba(255,255,255,0.65)", marginTop: "auto" }}
-                >
-                  {d}
-                </p>
-              </div>
-            </BlurIn>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ── Stats ────────────────────────────────────────────────────────────────────
-function Stats() {
-  return (
-    <section
-      id="numbers"
-      style={{ position: "relative", overflow: "hidden", padding: "160px 0" }}
+    <span
+      className={cn(
+        "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px]",
+        active ? "bg-sidebar-accent text-foreground" : "text-muted-foreground",
+      )}
     >
-      <HlsVideo src={STATS_HLS} saturate={0} />
-      <div className={styles.dimOverlay} style={{ background: "rgba(0,0,0,0.6)" }} />
-      <div className={styles.fadeTop} />
-      <div className={styles.fadeBottom} />
-
-      <div className={`${styles.shell} ${styles.z10}`}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            marginBottom: 40,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div
-              className={`${styles.liquidGlass} ${styles.pill}`}
-              style={{ borderRadius: 999, marginBottom: 18, display: "inline-flex" }}
-            >
-              Chapter III · By the numbers
-            </div>
-            <BlurText
-              text="The receipts."
-              className={styles.hSection}
-              as="h2"
-              style={{ maxWidth: 900 }}
-              delay={70}
-            />
-          </div>
-        </div>
-
-        <BlurIn>
-          <div className={styles.liquidGlass} style={{ borderRadius: 28, padding: "8px 36px" }}>
-            {[
-              ["Adaptive", "Poll cadence", "priority rises around active sales"],
-              ["Live", "Source health", "last success and stale status"],
-              ["3", "Notification channels", "email · discord · sms"],
-              ["1", "Unified feed", "events and sale windows together"],
-            ].map(([v, l, ctx]) => (
-              <div key={l} className={styles.ledgerRow}>
-                <div
-                  className={styles.fontHeading}
-                  style={{
-                    fontSize: "clamp(56px, 7vw, 96px)",
-                    lineHeight: 0.85,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {v}
-                </div>
-                <div>
-                  <div
-                    style={{ fontSize: 18, color: "#fff", fontWeight: 500, fontFamily: "Barlow, sans-serif" }}
-                  >
-                    {l}
-                  </div>
-                  <div className={styles.body} style={{ marginTop: 4 }}>
-                    —
-                  </div>
-                </div>
-                <div className={`${styles.ledgerCtx} ${styles.eyebrow}`}>{ctx}</div>
-              </div>
-            ))}
-          </div>
-        </BlurIn>
-      </div>
-    </section>
+      <Icon aria-hidden="true" className="size-4" />
+      {label}
+      {count !== undefined ? <span className="ml-auto font-mono text-xs text-faint">{count}</span> : null}
+    </span>
   );
 }
 
-// ── Product principles ───────────────────────────────────────────────────────
-function Testimonials() {
-  const quotes: [string, string, string][] = [
-    [
-      "Follow only the artists, venues, and locations that matter to you.",
-      "Focused",
-      "No generic citywide firehose",
-    ],
-    [
-      "Preview a public Spotify playlist and choose exactly which artists become watch rules.",
-      "Selective",
-      "Review before import",
-    ],
-    [
-      "See when each source last succeeded and when its data may be stale.",
-      "Transparent",
-      "Measured source health",
-    ],
-  ];
-
+function PreviewRow({ row }: { row: SampleChange }) {
+  const date = dateParts(row.date);
   return (
-    <section style={{ background: "#000", padding: "120px 0" }}>
-      <div className={styles.shell}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            marginBottom: 40,
-            gap: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div
-              className={`${styles.liquidGlass} ${styles.pill}`}
-              style={{ borderRadius: 999, marginBottom: 18, display: "inline-flex" }}
-            >
-              Chapter IV · Product principles
-            </div>
-            <BlurText
-              text="What we're building."
-              className={styles.hSection}
-              as="h2"
-              style={{ maxWidth: 900 }}
-              delay={70}
-            />
-          </div>
-        </div>
-
-        <div className={styles.grid3} style={{ marginTop: 24 }}>
-          {quotes.map(([q, n, r], i) => (
-            <BlurIn key={n} delay={0.1 * i}>
-              <div
-                className={`${styles.liquidGlass} ${styles.cardLift}`}
-                style={{
-                  borderRadius: 20,
-                  padding: 32,
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div
-                  className={styles.fontHeading}
-                  style={{
-                    fontSize: 64,
-                    lineHeight: 0.6,
-                    color: "rgba(255,255,255,0.55)",
-                    marginBottom: 12,
-                  }}
-                >
-                  &ldquo;
-                </div>
-                <p
-                  style={{
-                    fontSize: 18,
-                    lineHeight: 1.4,
-                    color: "rgba(255,255,255,0.85)",
-                    fontWeight: 300,
-                    fontStyle: "italic",
-                    margin: 0,
-                    fontFamily: "Barlow, sans-serif",
-                    marginBottom: "auto",
-                  }}
-                >
-                  {q}
-                </p>
-                <hr className={styles.ruleDashed} style={{ margin: "28px 0 16px" }} />
-                <div
-                  style={{ fontSize: 14, color: "#fff", fontWeight: 500, fontFamily: "Barlow, sans-serif" }}
-                >
-                  {n}
-                </div>
-                <div className={styles.tiny} style={{ marginTop: 2 }}>
-                  {r}
-                </div>
-              </div>
-            </BlurIn>
-          ))}
-        </div>
+    <li className="grid grid-cols-[56px_minmax(0,1fr)] items-center sm:grid-cols-[64px_minmax(0,1fr)_auto]">
+      <div className="flex flex-col items-center py-4 text-center">
+        <span className="text-xs text-muted-foreground">
+          {date?.month}
+          {date?.showYear ? ` ’${String(date.year).slice(2)}` : ""}
+        </span>
+        <span className="tabular font-display text-[28px] leading-8">{date?.day}</span>
+        <span className="text-xs text-faint">{date?.weekday}</span>
       </div>
-    </section>
+      <div className="min-w-0 border-l border-dashed py-4 pr-4 pl-4 sm:pl-5">
+        <p className="truncate text-sm font-medium">{row.artist}</p>
+        <p className="truncate text-[13px] text-muted-foreground">{row.place}</p>
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+          <Dot tone={row.tone} />
+          {row.from ? (
+            <>
+              <span className="text-faint line-through decoration-faint/60">{row.from}</span>
+              <ArrowRight aria-label="changed to" className="size-3.5 text-faint" />
+            </>
+          ) : null}
+          <span>{row.to}</span>
+          <span className="font-mono text-xs text-faint">{row.when}</span>
+        </p>
+      </div>
+      <div className="hidden flex-col items-end gap-1 pr-5 sm:flex">
+        <StatusDot tone={row.status.tone}>{row.status.label}</StatusDot>
+        <span className="font-mono text-xs text-faint">{row.sent}</span>
+      </div>
+    </li>
   );
 }
 
-// ── CTA + Footer ─────────────────────────────────────────────────────────────
-function CtaFooter() {
-  const footerCols = [
-    { heading: "UGround", links: ["How it works", "Sources", "Source health"] },
-    { heading: "Account", links: ["Sign in", "Create account", "Dashboard", "Reset password"] },
-    { heading: "Sources", links: ["Ticketmaster", "Songkick", "Bandsintown", "Approved partner feeds"] },
-  ];
-
+/** The real dashboard, drawn with sample data, rising from under the hero. */
+function ProductPreview() {
   return (
-    <section id="cta" style={{ position: "relative", overflow: "hidden", padding: "180px 0 0" }}>
-      <HlsVideo src={CTA_HLS} />
-      <div className={styles.dimOverlay} style={{ background: "rgba(0,0,0,0.45)" }} />
-      <div className={styles.fadeTop} />
-
-      <div className={`${styles.shell} ${styles.z10}`}>
-        <div className={styles.eyebrow} style={{ marginBottom: 14 }}>
-          Chapter V · Begin
+    <Container className="relative">
+      <div
+        aria-label="Sample of the UGround feed"
+        role="img"
+        className="relative overflow-hidden rounded-t-2xl border border-b-0 bg-sidebar [mask-image:linear-gradient(to_bottom,#000_70%,transparent)]"
+      >
+        <div className="flex">
+          <aside aria-hidden="true" className="hidden w-56 shrink-0 flex-col gap-1 border-r p-3 md:flex">
+            <span className="mb-3 flex h-8 items-center px-2.5">
+              <Logo size={18} className="[&>span:last-child]:text-[15px]" />
+            </span>
+            <PreviewNav icon={Rss} label="Feed" active />
+            <PreviewNav icon={ListMusic} label="Watchlist" count={6} />
+            <PreviewNav icon={Bell} label="Notifications" />
+            <PreviewNav icon={Settings} label="Account" />
+          </aside>
+          <div aria-hidden="true" className="min-w-0 flex-1 bg-background">
+            <div className="flex h-12 items-center justify-between border-b px-4 sm:px-6">
+              <span className="text-sm font-medium">Feed</span>
+              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <Dot tone="positive" />
+                Checked 12m ago
+                <span className="hidden text-faint sm:inline">· 3 of 3 sources healthy</span>
+              </span>
+            </div>
+            <div className="px-4 py-5 sm:px-6">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[13px] text-muted-foreground">Recent changes</span>
+                <span className="font-mono text-xs text-faint">Sample data</span>
+              </div>
+              <ul className="divide-y border-y">
+                {SAMPLE_FEED.map((row) => (
+                  <PreviewRow key={row.artist} row={row} />
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
-        <BlurText
-          text="Catch your next show first."
-          className={styles.fontHeading}
-          as="h2"
-          style={{
-            fontSize: "clamp(56px, 8vw, 128px)",
-            lineHeight: 0.85,
-            letterSpacing: "-0.02em",
-            maxWidth: 1100,
-            marginBottom: 28,
-          }}
-          delay={70}
+      </div>
+    </Container>
+  );
+}
+
+function SectionHeading({ id, title, lead }: { id: string; title: React.ReactNode; lead: string }) {
+  return (
+    <div className="max-w-md">
+      <h2 id={id} className="font-display text-[40px] leading-[1.05] text-balance sm:text-[48px]">
+        {title}
+      </h2>
+      <p className="mt-4 text-[15px] leading-6 text-muted-foreground">{lead}</p>
+    </div>
+  );
+}
+
+function HowItWorks() {
+  return (
+    <section id="how" aria-labelledby="how-heading" className="scroll-mt-8 py-20 sm:py-28">
+      <Container className="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
+        <SectionHeading
+          id="how-heading"
+          title={
+            <>
+              <span className="inline-block">You follow.</span>{" "}
+              <span className="inline-block">We watch.</span>{" "}
+              <span className="inline-block">You go.</span>
+            </>
+          }
+          lead="You decide what to follow. UGround does the checking and only speaks up when something you'd act on has changed."
         />
-        <BlurIn delay={0.4}>
-          <p
-            className={styles.lead}
-            style={{ maxWidth: 560, marginBottom: 36, color: "rgba(255,255,255,0.85)" }}
-          >
-            Build a watchlist in two minutes. Pick a channel that buzzes loud enough. We&rsquo;ll
-            handle the refreshing.
-          </p>
-        </BlurIn>
-        <BlurIn delay={0.6}>
-          <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-            <Link
-              href="/signup"
-              className={`${styles.liquidGlassStrong} ${styles.pillStrong}`}
-              style={{ borderRadius: 999, padding: "14px 26px", fontSize: 14 }}
+        <ol className="divide-y border-y">
+          {STEPS.map((step, i) => (
+            <li
+              key={step.title}
+              className="grid grid-cols-[48px_minmax(0,1fr)] gap-x-4 gap-y-4 py-6 sm:grid-cols-[64px_minmax(0,1fr)_minmax(0,15rem)] sm:gap-x-8"
             >
-              Start watching <ArrowUpRight size={14} />
-            </Link>
-            <Link href="/login" className={styles.btnWhite} style={{ padding: "14px 26px", fontSize: 14 }}>
-              I already have an account
-            </Link>
-          </div>
-        </BlurIn>
-
-        <footer
-          style={{
-            marginTop: 160,
-            paddingTop: 32,
-            paddingBottom: 32,
-            borderTop: "1px solid rgba(255,255,255,0.1)",
-          }}
-        >
-          <div className={styles.footerGrid}>
-            <div>
-              <div
-                className={styles.fontHeading}
-                style={{ fontSize: 32, lineHeight: 1, marginBottom: 12 }}
-              >
-                UGround
+              <span aria-hidden="true" className="tabular font-display text-[40px] leading-none text-faint sm:text-[48px]">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div>
+                <h3 className="text-base font-medium">{step.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{step.body}</p>
               </div>
-              <p className={styles.body} style={{ maxWidth: 320 }}>
-                Watchlist-powered presale alerts for the artists, venues, and cities you actually
-                care about.
-              </p>
-            </div>
-            {footerCols.map(({ heading, links }) => (
-              <div key={heading}>
-                <div className={styles.eyebrow} style={{ marginBottom: 14 }}>
-                  {heading}
-                </div>
-                <ul
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                    fontSize: 13,
-                    color: "rgba(255,255,255,0.7)",
-                  }}
-                >
-                  {links.map((l) => (
-                    <li key={l}>{l}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              paddingTop: 24,
-              borderTop: "1px dashed rgba(255,255,255,0.18)",
-              flexWrap: "wrap",
-              gap: 16,
-            }}
-          >
-            <div className={styles.tiny} style={{ color: "rgba(255,255,255,0.4)" }}>
-              © 2026 UGround. Public sources only — no scraping behind paywalls.
-            </div>
-            <div style={{ display: "flex", gap: 24 }}>
-              {[
-                ["Privacy", "/privacy"],
-                ["Terms", "/terms"],
-                ["Contact", "mailto:support@uground.app"],
-              ].map(([label, href]) => (
-                <a
-                  key={label}
-                  href={href}
-                  className={styles.tiny}
-                  style={{ color: "rgba(255,255,255,0.4)", textDecoration: "none" }}
-                >
-                  {label}
-                </a>
-              ))}
-            </div>
-          </div>
-        </footer>
-      </div>
+              <dl className="col-start-2 grid content-start gap-2 text-[13px] sm:col-start-3">
+                {step.specs.map(([term, detail]) => (
+                  <div key={term} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3">
+                    <dt className="font-mono text-xs leading-5 text-faint">{term}</dt>
+                    <dd className="text-muted-foreground">{detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          ))}
+        </ol>
+      </Container>
     </section>
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+function Triggers() {
+  return (
+    <section aria-labelledby="triggers-heading" className="border-t py-20 sm:py-28">
+      <Container className="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
+        <SectionHeading
+          id="triggers-heading"
+          title="We don't list shows. We list changes."
+          lead="Eight kinds of change. Shows are matched across sources, so the same show listed in two places is still one alert."
+        />
+        <dl className="grid border-t sm:grid-cols-2 sm:gap-x-8">
+          {TRIGGERS.map((trigger) => (
+            <div key={trigger.term} className="border-b py-4">
+              <dt className="flex items-center gap-2.5 text-sm font-medium">
+                <Dot tone={trigger.tone} />
+                {trigger.term}
+              </dt>
+              <dd className="mt-1 pl-4 text-[13px] leading-5 text-muted-foreground">{trigger.detail}</dd>
+            </div>
+          ))}
+        </dl>
+      </Container>
+    </section>
+  );
+}
+
+/** A product principle from the original UGround landing page, kept as its pull quote. */
+function Principle() {
+  return (
+    <section aria-label="Product principle" className="py-20 sm:py-28">
+      <Container>
+        <figure className="mx-auto max-w-5xl border-y-2 border-foreground/80 px-2 py-14 text-center sm:py-16">
+          <blockquote className="font-display text-[34px] leading-[1.1] text-balance sm:text-[48px] lg:text-[56px]">
+            Source freshness should be measured, visible, and honest. Not hidden behind a marketing
+            promise.
+          </blockquote>
+          <figcaption className="mt-8 font-mono text-xs text-muted-foreground">
+            UGround product principle
+          </figcaption>
+        </figure>
+      </Container>
+    </section>
+  );
+}
+
+function Sources() {
+  return (
+    <section id="sources" aria-labelledby="sources-heading" className="scroll-mt-8 border-t py-20 sm:py-28">
+      <Container className="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
+        <SectionHeading
+          id="sources-heading"
+          title="Sources"
+          lead="Official APIs and approved partner feeds only. Nothing is scraped, and the dashboard shows when each source last checked in."
+        />
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <table className="w-full min-w-[540px] text-left text-sm">
+            <thead>
+              <tr className="border-b text-[13px] text-muted-foreground">
+                <th scope="col" className="h-10 px-4 font-normal">Source</th>
+                <th scope="col" className="h-10 px-4 font-normal">Access</th>
+                <th scope="col" className="h-10 px-4 font-normal">Provides</th>
+                <th scope="col" className="h-10 px-4 font-normal">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {SOURCES.map((source) => (
+                <tr key={source.name} className={source.enabled ? undefined : "text-faint"}>
+                  <th scope="row" className="px-4 py-3 font-medium">{source.name}</th>
+                  <td className={cn("px-4 py-3", source.enabled && "text-muted-foreground")}>{source.access}</td>
+                  <td className={cn("px-4 py-3", source.enabled && "text-muted-foreground")}>{source.provides}</td>
+                  <td className="px-4 py-3">
+                    <StatusDot tone={source.enabled ? "positive" : "muted"}>
+                      {source.enabled ? "Supported" : "Off"}
+                    </StatusDot>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Container>
+    </section>
+  );
+}
+
+function Closing() {
+  return (
+    <section aria-labelledby="closing-heading" className="border-t py-20 sm:py-28">
+      <Container className="flex flex-col items-start justify-between gap-8 md:flex-row md:items-end">
+        <div className="max-w-2xl">
+          <h2
+            id="closing-heading"
+            className="font-display text-[48px] leading-[0.95] text-balance sm:text-[72px]"
+          >
+            Catch your next show
+          </h2>
+          <p className="mt-5 text-[15px] leading-6 text-muted-foreground">
+            Add a few artists, pick where alerts go, and let it run. Free while in beta.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button asChild size="lg" className="h-11 px-5 text-[15px]">
+            <Link href="/signup">
+              Create an account
+              <ArrowRight aria-hidden="true" />
+            </Link>
+          </Button>
+          <Button asChild size="lg" variant="outline" className="h-11 px-5 text-[15px]">
+            <Link href="/login">Sign in</Link>
+          </Button>
+        </div>
+      </Container>
+    </section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="border-t">
+      <Container className="flex flex-col gap-4 py-8 text-[13px] sm:flex-row sm:items-center sm:justify-between">
+        <span className="flex items-center gap-3 text-faint">
+          <Logo size={18} className="[&>span:last-child]:text-[15px]" />
+          <span>© 2026</span>
+        </span>
+        <nav aria-label="Footer" className="flex gap-5 text-muted-foreground">
+          <Link href="/privacy" className="transition-colors hover:text-foreground">Privacy</Link>
+          <Link href="/terms" className="transition-colors hover:text-foreground">Terms</Link>
+          <a href="mailto:support@uground.app" className="transition-colors hover:text-foreground">Contact</a>
+          <Link href="/login" className="transition-colors hover:text-foreground">Sign in</Link>
+        </nav>
+      </Container>
+    </footer>
+  );
+}
+
 export default function LandingPage() {
   return (
-    <div id="studio-landing" className={styles.studioPage}>
-      <Masthead />
+    <div className="min-h-dvh overflow-x-clip bg-background">
+      <Header />
       <main>
         <Hero />
-        <div style={{ background: "#000" }}>
-          <ProcessSection />
-          <FeaturesChess />
-          <PullQuote />
-          <WhyUs />
-          <Stats />
-          <Testimonials />
-          <CtaFooter />
-        </div>
+        <ProductPreview />
+        <SourceStrip />
+        <HowItWorks />
+        <Triggers />
+        <Principle />
+        <Sources />
+        <Closing />
       </main>
+      <Footer />
     </div>
   );
 }

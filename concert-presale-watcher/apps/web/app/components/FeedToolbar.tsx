@@ -1,12 +1,13 @@
+"use client";
+
 import {
-  ArrowDownUp,
-  CalendarClock,
-  Clock,
-  Flame,
-  Inbox,
-  type LucideIcon,
-} from "lucide-react";
-import styles from "../dashboard/dashboard.module.css";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export type EventFilter = "all" | "onsale" | "scheduled" | "changed_today";
 export type EventSort = "recent_change" | "date_soonest" | "artist_az";
@@ -18,70 +19,43 @@ interface FilterOption {
 }
 
 interface FeedToolbarProps {
-  filter: EventFilter;
   sort: EventSort;
   filters: FilterOption[];
-  onFilterChange: (filter: EventFilter) => void;
   onSortChange: (sort: EventSort) => void;
 }
 
-const filterIcons: Record<EventFilter, LucideIcon> = {
-  all: Inbox,
-  onsale: Flame,
-  changed_today: Clock,
-  scheduled: CalendarClock,
-};
-
-export default function FeedToolbar({
-  filter,
-  sort,
-  filters,
-  onFilterChange,
-  onSortChange,
-}: FeedToolbarProps) {
+/** Lives inside the feed's <Tabs>, which owns the selected filter. */
+export default function FeedToolbar({ sort, filters, onSortChange }: FeedToolbarProps) {
   return (
-    <section className={styles.toolbar} aria-label="Feed controls">
-      <div className={styles.filterGroup} aria-label="Event filters">
-        {filters.map((option) => {
-          const Icon = filterIcons[option.id];
-
-          return (
-            <button
-              key={option.id}
-              type="button"
-              className={`${styles.filterPill} ${
-                filter === option.id ? styles.filterPillActive : ""
-              } ${option.count === 0 ? styles.filterPillEmpty : ""}`}
-              onClick={() => onFilterChange(option.id)}
-              aria-pressed={filter === option.id}
-            >
-              <Icon
-                aria-hidden="true"
-                size={15}
-                className={styles.filterPillIcon}
-              />
-              {option.label} <span>{option.count}</span>
-            </button>
-          );
-        })}
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <TabsList aria-label="Filter shows" className="h-9">
+          {filters.map((option) => (
+            <TabsTrigger key={option.id} value={option.id} className="gap-2 px-3">
+              {option.label}
+              <span className="tabular font-mono text-xs text-muted-foreground">
+                {option.count}
+              </span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
       </div>
 
-      <div className={styles.toolbarActions}>
-        <label className={styles.sortControl}>
-          <span>
-            <ArrowDownUp aria-hidden="true" size={14} />
-            Sort
-          </span>
-          <select
-            value={sort}
-            onChange={(event) => onSortChange(event.target.value as EventSort)}
-          >
-            <option value="recent_change">Recent change</option>
-            <option value="date_soonest">Date (soonest)</option>
-            <option value="artist_az">Artist (A-Z)</option>
-          </select>
-        </label>
+      <div className="flex items-center gap-2">
+        <span id="sort-label" className="text-[13px] text-muted-foreground">
+          Sort
+        </span>
+        <Select value={sort} onValueChange={(value) => onSortChange(value as EventSort)}>
+          <SelectTrigger size="sm" aria-labelledby="sort-label" className="w-full min-w-40 sm:w-auto">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectItem value="recent_change">Recent change</SelectItem>
+            <SelectItem value="date_soonest">Show date</SelectItem>
+            <SelectItem value="artist_az">Artist A–Z</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-    </section>
+    </div>
   );
 }

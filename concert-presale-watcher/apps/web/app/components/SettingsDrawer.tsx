@@ -1,18 +1,25 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useState } from "react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   ArtistSuggestion,
   NotificationSettingsResponse,
   PollResult,
   WatchArtist,
   WatchRule,
-} from "../../lib/types";
-import NotificationSettingsPanel from "./NotificationSettingsPanel";
+} from "@/lib/types";
 import AccountPanel from "./AccountPanel";
+import NotificationSettingsPanel from "./NotificationSettingsPanel";
 import WatchlistList from "./WatchlistList";
 import WatchlistPanel from "./WatchlistPanel";
-import styles from "../dashboard/dashboard.module.css";
 
 type SettingsTab = "watchlist" | "notifications" | "account";
 
@@ -22,26 +29,8 @@ const settingsTabs: { id: SettingsTab; label: string }[] = [
   { id: "account", label: "Account" },
 ];
 
-const focusableSelector = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "textarea:not([disabled])",
-  "select:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(",");
-
-const getFocusable = (root: HTMLElement | null): HTMLElement[] => {
-  if (!root) return [];
-
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(focusableSelector),
-  ).filter(
-    (element) =>
-      !element.hasAttribute("disabled") &&
-      element.getAttribute("aria-hidden") !== "true",
-  );
-};
+const isSettingsTab = (value: string): value is SettingsTab =>
+  settingsTabs.some((tab) => tab.id === value);
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -81,6 +70,8 @@ interface SettingsDrawerProps {
   onConfirmSms: (code: string) => Promise<void>;
 }
 
+const panelClass = "mt-0 min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-6";
+
 export default function SettingsDrawer({
   open,
   initialTab,
@@ -111,168 +102,59 @@ export default function SettingsDrawer({
   onSendSmsConfirmation,
   onConfirmSms,
 }: SettingsDrawerProps) {
-  const drawerRef = useRef<HTMLElement>(null);
-  const tabBaseId = useId();
-  const [activeTab, setActiveTab] = useState<SettingsTab>("watchlist");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "watchlist");
+  const [shownFor, setShownFor] = useState<{ open: boolean; tab?: SettingsTab }>({
+    open,
+    tab: initialTab,
+  });
 
-  useEffect(() => {
-    if (!open) return;
+  // Each time the sheet opens (or is reopened on another section), start on the requested tab.
+  if (shownFor.open !== open || shownFor.tab !== initialTab) {
+    setShownFor({ open, tab: initialTab });
+    if (open) setActiveTab(initialTab ?? "watchlist");
+  }
 
-    setActiveTab(initialTab ?? "watchlist");
-
-    const previousFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const frame = window.requestAnimationFrame(() => {
-      const firstFocusable = getFocusable(drawerRef.current)[0];
-      (firstFocusable ?? drawerRef.current)?.focus();
-    });
-
-    const handleEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", handleEscape);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
-    };
-  }, [initialTab, open, onClose]);
-
-  const trapFocus = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key !== "Tab") return;
-
-    const focusable = getFocusable(drawerRef.current);
-    if (focusable.length === 0) {
-      event.preventDefault();
-      drawerRef.current?.focus();
-      return;
-    }
-
-    const first = focusable[0]!;
-    const last = focusable[focusable.length - 1]!;
-
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
-  const getTabId = (tab: SettingsTab) => `${tabBaseId}-${tab}-tab`;
-  const getPanelId = (tab: SettingsTab) => `${tabBaseId}-${tab}-panel`;
-
-  const focusTab = (tab: SettingsTab) => {
-    window.requestAnimationFrame(() => {
-      document.getElementById(getTabId(tab))?.focus();
-    });
-  };
-
-  const handleTabKeyDown = (
-    event: KeyboardEvent<HTMLButtonElement>,
-    tab: SettingsTab,
-  ) => {
-    const currentIndex = settingsTabs.findIndex((item) => item.id === tab);
-    const lastIndex = settingsTabs.length - 1;
-    let nextTab: SettingsTab | null = null;
-
-    if (event.key === "ArrowRight") {
-      nextTab =
-        settingsTabs[currentIndex === lastIndex ? 0 : currentIndex + 1]!.id;
-    } else if (event.key === "ArrowLeft") {
-      nextTab =
-        settingsTabs[currentIndex === 0 ? lastIndex : currentIndex - 1]!.id;
-    }
-
-    if (!nextTab) return;
-
-    event.preventDefault();
-    setActiveTab(nextTab);
-    focusTab(nextTab);
-  };
-
-  if (!open) return null;
+  const followCount = artists.length + watchRules.filter((rule) => rule.kind !== "artist").length;
 
   return (
-    <div className={styles.settingsLayer}>
-      <button
-        type="button"
-        className={styles.settingsBackdrop}
-        aria-label="Close settings"
-        onClick={onClose}
-      />
-      <aside
-        ref={drawerRef}
-        className={styles.settingsDrawer}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        tabIndex={-1}
-        onKeyDown={trapFocus}
+    <Sheet open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+      <SheetContent
+        side="right"
+        className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[480px]"
+        onEscapeKeyDown={(event) => {
+          // Escape inside an open autocomplete closes the list, not the sheet.
+          const target = event.target as HTMLElement | null;
+          if (target?.getAttribute("role") === "combobox" && target.getAttribute("aria-expanded") === "true") {
+            event.preventDefault();
+          }
+        }}
       >
-        <header className={styles.drawerHeader}>
-          <div>
-            <p className={styles.drawerKicker}>Settings</p>
-            <h2 id="settings-title">Watchlist and alerts</h2>
-          </div>
-          <button
-            type="button"
-            className={`${styles.secondaryButton} ${styles.buttonSmall}`}
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </header>
+        <SheetHeader className="gap-1 px-6 pt-5 pb-4">
+          <SheetTitle className="text-base leading-6">Settings</SheetTitle>
+          <SheetDescription className="sr-only">
+            What you follow, where alerts go, and your account data
+          </SheetDescription>
+        </SheetHeader>
 
-        <div className={styles.drawerContent}>
-          <div
-            className={styles.tabStrip}
-            role="tablist"
-            aria-label="Settings sections"
-          >
-            {settingsTabs.map((tab) => {
-              const selected = activeTab === tab.id;
-
-              return (
-                <button
-                  key={tab.id}
-                  id={getTabId(tab.id)}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  aria-controls={getPanelId(tab.id)}
-                  tabIndex={selected ? 0 : -1}
-                  className={`${styles.tabButton} ${
-                    selected ? styles.tabButtonActive : ""
-                  }`}
-                  onClick={() => setActiveTab(tab.id)}
-                  onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
-                >
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            if (isSettingsTab(value)) setActiveTab(value);
+          }}
+          className="min-h-0 flex-1 gap-0"
+        >
+          <div className="border-b px-6 pb-4">
+            <TabsList className="w-full">
+              {settingsTabs.map((tab) => (
+                <TabsTrigger key={tab.id} value={tab.id}>
                   {tab.label}
-                </button>
-              );
-            })}
+                </TabsTrigger>
+              ))}
+            </TabsList>
           </div>
 
-          {activeTab === "watchlist" ? (
-            <section
-              id={getPanelId("watchlist")}
-              className={styles.tabPanel}
-              role="tabpanel"
-              aria-labelledby={getTabId("watchlist")}
-              tabIndex={0}
-            >
+          <TabsContent value="watchlist" className={panelClass}>
+            <div className="flex flex-col gap-8">
               <WatchlistPanel
                 busy={busy}
                 city={city}
@@ -291,78 +173,44 @@ export default function SettingsDrawer({
                 lastPoll={lastPoll}
               />
 
-              <section
-                className={`${styles.panel} ${styles.watchlistTabList}`}
-                aria-labelledby={`${tabBaseId}-followed-heading`}
-              >
-                <div className={styles.watchlistListHeader}>
-                  <h2 id={`${tabBaseId}-followed-heading`}>
-                    Followed Artists ({artists.length})
-                  </h2>
-                </div>
+              <section aria-labelledby="settings-following-heading" className="flex flex-col gap-2">
+                <h3
+                  id="settings-following-heading"
+                  className="flex items-baseline gap-2 text-[15px] leading-6 font-medium text-foreground"
+                >
+                  Following
+                  <span className="font-mono text-xs font-normal text-faint tabular">
+                    {followCount}
+                  </span>
+                </h3>
                 <WatchlistList
                   artists={artists}
-                  onRemove={onRemoveArtist}
+                  rules={watchRules}
+                  onRemoveArtist={onRemoveArtist}
+                  onRemoveRule={onRemoveWatchRule}
                   loading={busy}
                 />
-                {watchRules.filter((rule) => rule.kind !== "artist").length ? (
-                  <ul className={styles.list}>
-                    {watchRules
-                      .filter((rule) => rule.kind !== "artist")
-                      .map((rule) => (
-                        <li key={rule.id} className={styles.watchlistItem}>
-                          <span>
-                            <strong>{rule.label}</strong>
-                            <small>
-                              {rule.kind === "venue"
-                                ? "Venue watch"
-                                : `${rule.radius_miles} mile radius`}
-                            </small>
-                          </span>
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() => void onRemoveWatchRule(rule.id)}
-                          >
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                  </ul>
-                ) : null}
               </section>
-            </section>
-          ) : activeTab === "notifications" ? (
-            <section
-              id={getPanelId("notifications")}
-              className={styles.tabPanel}
-              role="tabpanel"
-              aria-labelledby={getTabId("notifications")}
-              tabIndex={0}
-            >
-              <NotificationSettingsPanel
-                settings={notificationSettings}
-                busy={busy}
-                onSave={onSaveNotificationSettings}
-                onTestDiscord={onTestDiscord}
-                onSendEmailConfirmation={onSendEmailConfirmation}
-                onSendSmsConfirmation={onSendSmsConfirmation}
-                onConfirmSms={onConfirmSms}
-              />
-            </section>
-          ) : (
-            <section
-              id={getPanelId("account")}
-              className={styles.tabPanel}
-              role="tabpanel"
-              aria-labelledby={getTabId("account")}
-              tabIndex={0}
-            >
-              <AccountPanel />
-            </section>
-          )}
-        </div>
-      </aside>
-    </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="notifications" className={panelClass}>
+            <NotificationSettingsPanel
+              settings={notificationSettings}
+              busy={busy}
+              onSave={onSaveNotificationSettings}
+              onTestDiscord={onTestDiscord}
+              onSendEmailConfirmation={onSendEmailConfirmation}
+              onSendSmsConfirmation={onSendSmsConfirmation}
+              onConfirmSms={onConfirmSms}
+            />
+          </TabsContent>
+
+          <TabsContent value="account" className={panelClass}>
+            <AccountPanel />
+          </TabsContent>
+        </Tabs>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -9,20 +9,30 @@ const nextConfig = {
       "'self'",
       supabaseHost,
       "https://*.supabase.co",
-      "https://stream.mux.com",
       "https://vitals.vercel-insights.com",
     ].filter(Boolean).join(" ");
+    // Dev only: React needs eval() for debugging, and Vercel Analytics loads its
+    // debug script from its CDN. Production serves analytics from 'self'.
+    const isDev = process.env.NODE_ENV === "development";
+    const scriptSources = [
+      "'self'",
+      "'unsafe-inline'",
+      isDev && "'unsafe-eval'",
+      isDev && "https://va.vercel-scripts.com",
+    ]
+      .filter(Boolean)
+      .join(" ");
     const csp = [
       "default-src 'self'",
       "base-uri 'self'",
       "object-src 'none'",
       "frame-ancestors 'none'",
       "form-action 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      `script-src ${scriptSources}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://i.scdn.co https://images.unsplash.com",
       `connect-src ${connectSources}`,
-      "media-src 'self' blob: https://stream.mux.com",
+      "media-src 'self' blob:",
       "font-src 'self'",
       "upgrade-insecure-requests",
     ].join("; ");

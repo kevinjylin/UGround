@@ -14,6 +14,8 @@ import type {
   WatchArtist,
   WatchRule,
 } from "../../lib/types";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import ErrorBanner from "../components/ErrorBanner";
 import EventList from "../components/EventList";
 import FeedToolbar, {
@@ -22,12 +24,11 @@ import FeedToolbar, {
 } from "../components/FeedToolbar";
 import OnSaleHero from "../components/OnSaleHero";
 import SettingsDrawer from "../components/SettingsDrawer";
-import Sidebar from "../components/Sidebar";
+import AppSidebar from "../components/Sidebar";
 import TopBar from "../components/TopBar";
-import styles from "./dashboard.module.css";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-type SettingsTab = "watchlist" | "notifications";
+type SettingsTab = "watchlist" | "notifications" | "account";
 
 const toTimestamp = (value: string | null | undefined): number => {
   if (!value) return 0;
@@ -44,10 +45,10 @@ const latestActivityTime = (
     alertsByEventId.get(event.id)?.[0]?.created_at,
   );
 
+  // last_seen_at moves on every check, so it says nothing about change.
   return Math.max(
     latestAlertTime,
     toTimestamp(event.updated_at),
-    toTimestamp(event.last_seen_at),
     toTimestamp(event.created_at),
   );
 };
@@ -78,13 +79,14 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState<EventFilter>("all");
   const [sort, setSort] = useState<EventSort>("recent_change");
   const [settingsOpen, setSettingsOpen] = useState<false | SettingsTab>(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [refreshQueued, setRefreshQueued] = useState(false);
 
   const [busy, setBusy] = useState(true);
   const [polling, setPolling] = useState(false);
   const [lastPoll, setLastPoll] = useState<PollResult | null>(null);
   const [sourceStatuses, setSourceStatuses] = useState<SourceStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Track previous artist count to detect first-artist-added transition.
   const prevArtistCount = useRef<number | null>(null);
@@ -174,6 +176,18 @@ export default function DashboardPage() {
     void refreshAll(true);
   }, []);
 
+  useEffect(() => {
+    try {
+      const supabase = createSupabaseBrowserClient();
+      void supabase.auth
+        .getUser()
+        .then(({ data }) => setUserEmail(data.user?.email ?? null))
+        .catch(() => setUserEmail(null));
+    } catch {
+      // Auth isn't configured in this environment; the sidebar falls back to a generic label.
+    }
+  }, []);
+
   // When the user goes from 0 artists to 1+, auto-trigger a poll so
   // events appear immediately instead of an empty feed.
   useEffect(() => {
@@ -227,12 +241,12 @@ export default function DashboardPage() {
       { id: "all" as const, label: "All", count: filterCounts.all },
       {
         id: "onsale" as const,
-        label: "On Sale",
+        label: "On sale",
         count: filterCounts.onsale,
       },
       {
         id: "changed_today" as const,
-        label: "Changed Today",
+        label: "Changed today",
         count: filterCounts.changed_today,
       },
       {
@@ -298,22 +312,54 @@ export default function DashboardPage() {
     [alertsByEventId, events],
   );
 
-  const latestPollishTimestamp = useMemo(
-    () =>
-      events.reduce(
-        (latest, event) => Math.max(latest, toTimestamp(event.last_seen_at)),
-        0,
-      ),
-    [events],
-  );
-  const lastPollTimestamp =
-    toTimestamp(lastPoll?.endedAt) || latestPollishTimestamp;
-  const lastPollText =
-    lastPollTimestamp > 0
-      ? `last poll ${relativeTime(new Date(lastPollTimestamp).toISOString())}`
+  // Last time a source actually checked in. A queued refresh is not a check.
+  const lastCheckedTimestamp = useMemo(() => {
+    const fromSources = sourceStatuses.reduce(
+      (latest, source) => Math.max(latest, toTimestamp(source.last_success_at)),
+      0,
+    );
+    if (fromSources > 0) return fromSources;
+    return events.reduce(
+      (latest, event) => Math.max(latest, toTimestamp(event.last_seen_at)),
+      0,
+    );
+  }, [events, sourceStatuses]);
+  const lastCheckedText =
+    lastCheckedTimestamp > 0
+      ? `Checked ${relativeTime(new Date(lastCheckedTimestamp).toISOString())}`
       : busy
-        ? "loading latest status"
-        : "last poll unavailable";
+        ? "Loading"
+        : "Not checked yet";
+
+  const followingSummary = useMemo(() => {
+    const venues = watchRules.filter((rule) => rule.kind === "venue").length;
+    const areas = watchRules.filter((rule) => rule.kind === "location").length;
+    const parts = [
+      artists.length > 0 ? `${artists.length} ${artists.length === 1 ? "artist" : "artists"}` : null,
+      venues > 0 ? `${venues} ${venues === 1 ? "venue" : "venues"}` : null,
+      areas > 0 ? `${areas} ${areas === 1 ? "area" : "areas"}` : null,
+    ].filter(Boolean) as string[];
+    if (parts.length === 0) return null;
+    const list =
+      parts.length === 1
+        ? parts[0]
+        : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+    return `the ${list} you follow`;
+  }, [artists.length, watchRules]);
+
+  // Disabled sources are off on purpose, so they don't count against health.
+  const enabledSources = sourceStatuses.filter((source) => source.enabled);
+  const healthySources = enabledSources.filter((source) => !source.stale).length;
+  const sourceSummary =
+    enabledSources.length === 0
+      ? "Source health unavailable"
+      : `${healthySources} of ${enabledSources.length} sources healthy`;
+  const sourceHealth =
+    enabledSources.length === 0
+      ? ("unknown" as const)
+      : healthySources === enabledSources.length
+        ? ("healthy" as const)
+        : ("degraded" as const);
 
   const addArtist = async (name: string, spotifyId?: string) => {
     setError(null);
@@ -437,6 +483,7 @@ export default function DashboardPage() {
         startedAt: new Date().toISOString(),
         endedAt: new Date().toISOString(),
       });
+      setRefreshQueued(true);
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
@@ -507,57 +554,77 @@ export default function DashboardPage() {
     router.refresh();
   };
 
+  const upcomingCount = filterCounts.all;
+
   return (
-    <div id="studio-dashboard" className={styles.dashboardPage}>
-      <a href="#event-feed" className={styles.skipLink}>
-        Skip to event feed
+    <SidebarProvider>
+      <a
+        href="#event-feed"
+        className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      >
+        Skip to shows
       </a>
-      <div className={styles.layout}>
-        <Sidebar
-          mobileOpen={sidebarOpen}
-          onCloseMobile={() => setSidebarOpen(false)}
-          onOpenSettings={openSettings}
-          onLogout={() => void handleSignOut()}
+      <AppSidebar
+        userEmail={userEmail}
+        watchCount={artists.length}
+        sources={sourceStatuses}
+        onOpenSettings={openSettings}
+        onLogout={() => void handleSignOut()}
+      />
+
+      <SidebarInset aria-busy={busy}>
+        <TopBar
+          lastCheckedText={lastCheckedText}
+          refreshQueued={refreshQueued}
+          busy={busy}
+          polling={polling}
+          onRefresh={() => void runPoll()}
+          sourceSummary={sourceSummary}
+          sourceHealth={sourceHealth}
         />
 
-        <main className={styles.mainColumn} aria-busy={busy}>
-          <TopBar
-            lastPollText={lastPollText}
-            busy={busy}
-            polling={polling}
-            onOpenMenu={() => setSidebarOpen(true)}
-            onRefresh={() => void runPoll()}
-            sourceSummary={
-              sourceStatuses.length === 0
-                ? "source health unavailable"
-                : `${sourceStatuses.filter((source) => source.enabled && !source.stale).length}/${sourceStatuses.length} sources healthy`
-            }
-          />
+        <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 pt-8 pb-16 sm:px-6 lg:px-8 [&>*]:min-w-0">
+          <div>
+            <h1 className="font-display text-[44px] leading-[1.05]">Your shows</h1>
+            {followingSummary && !(busy && events.length === 0) ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                <span className="tabular">{upcomingCount}</span>{" "}
+                {upcomingCount === 1 ? "show" : "shows"} from {followingSummary}
+              </p>
+            ) : null}
+          </div>
 
-          {error ? (
-            <ErrorBanner message={error} className={styles.errorBanner} />
-          ) : null}
+          {error ? <ErrorBanner message={error} /> : null}
 
-          <OnSaleHero events={onSaleEvents} totalCount={filterCounts.onsale} />
-
-          <FeedToolbar
-            filter={filter}
-            sort={sort}
-            filters={filters}
-            onFilterChange={setFilter}
-            onSortChange={setSort}
-          />
-
-          <EventList
-            events={filteredSortedEvents}
+          <OnSaleHero
+            events={onSaleEvents}
             alertsByEventId={alertsByEventId}
-            totalEvents={events.length}
-            loading={busy}
-            hasArtists={artists.length > 0}
-            onOpenWatchlist={() => openSettings("watchlist")}
+            totalCount={filterCounts.onsale}
+            onShowAll={() => setFilter("onsale")}
           />
-        </main>
-      </div>
+
+          <Tabs
+            value={filter}
+            onValueChange={(value) => setFilter(value as EventFilter)}
+            className="min-w-0 gap-4"
+          >
+            {events.length > 0 || busy ? (
+              <FeedToolbar sort={sort} filters={filters} onSortChange={setSort} />
+            ) : null}
+            <TabsContent value={filter} className="mt-0">
+              <EventList
+                events={filteredSortedEvents}
+                alertsByEventId={alertsByEventId}
+                totalEvents={events.length}
+                loading={busy && events.length === 0}
+                hasArtists={artists.length > 0}
+                onOpenWatchlist={() => openSettings("watchlist")}
+                onClearFilter={() => setFilter("all")}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </SidebarInset>
 
       <SettingsDrawer
         open={settingsOpen !== false}
@@ -603,6 +670,6 @@ export default function DashboardPage() {
           })
         }
       />
-    </div>
+    </SidebarProvider>
   );
 }

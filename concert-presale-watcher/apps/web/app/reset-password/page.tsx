@@ -3,9 +3,13 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
-import AuthFrame from "../components/AuthFrame";
+import { CircleCheck } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import AuthFrame, { AuthLink } from "../components/AuthFrame";
 import ErrorBanner from "../components/ErrorBanner";
-import styles from "../auth.module.css";
 
 function ResetPasswordForm() {
   const [password, setPassword] = useState("");
@@ -56,56 +60,59 @@ function ResetPasswordForm() {
   if (complete) {
     return (
       <>
-        <div className={styles.successBanner} role="status" aria-live="polite">
-          Your password has been reset.
-        </div>
-        <Link href="/login" className={styles.primaryLink}>
-          Sign in
-        </Link>
+        <Alert role="status" aria-live="polite">
+          <CircleCheck />
+          <AlertDescription className="text-foreground">Your password has been reset.</AlertDescription>
+        </Alert>
+        <Button asChild className="h-10 w-full">
+          <Link href="/login">Sign in</Link>
+        </Button>
       </>
     );
   }
 
   return (
     <>
-      <form className={styles.stack} onSubmit={submit}>
-        <label htmlFor="reset-password" className="srOnly">
-          New password
-        </label>
-        <input
-          className={styles.field}
-          id="reset-password"
-          type="password"
-          autoComplete="new-password"
-          autoFocus
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="New password"
-          minLength={8}
-          required
-        />
-        <label htmlFor="reset-confirm-password" className="srOnly">
-          Confirm password
-        </label>
-        <input
-          className={styles.field}
-          id="reset-confirm-password"
-          type="password"
-          autoComplete="new-password"
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder="Confirm password"
-          minLength={8}
-          required
-        />
-        <button className={styles.primaryButton} type="submit" disabled={busy}>
-          {busy ? "Resetting..." : "Reset password"}
-        </button>
+      <form onSubmit={submit}>
+        <FieldGroup className="gap-5">
+          <Field className="gap-2">
+            <FieldLabel htmlFor="reset-password">New password</FieldLabel>
+            <Input
+              className="h-10"
+              id="reset-password"
+              type="password"
+              autoComplete="new-password"
+              autoFocus
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              aria-describedby="reset-password-hint"
+              minLength={8}
+              required
+            />
+            <FieldDescription id="reset-password-hint" className="text-[13px] leading-5">
+              At least 8 characters
+            </FieldDescription>
+          </Field>
+          <Field className="gap-2">
+            <FieldLabel htmlFor="reset-confirm-password">Confirm new password</FieldLabel>
+            <Input
+              className="h-10"
+              id="reset-confirm-password"
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              minLength={8}
+              required
+            />
+          </Field>
+          <Button className="h-10 w-full" type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Save new password"}
+          </Button>
+        </FieldGroup>
       </form>
 
-      {error ? (
-        <ErrorBanner message={error} className={styles.errorBanner} />
-      ) : null}
+      {error ? <ErrorBanner message={error} /> : null}
     </>
   );
 }
@@ -113,15 +120,15 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <AuthFrame
-      kicker="New password"
-      title="Choose a new password."
-      lead="Finish the reset and sign in again when the link checks out."
+      title="Choose a new password"
+      description="You'll use it the next time you sign in."
+      footer={
+        <>
+          Back to <AuthLink href="/login">Sign in</AuthLink>
+        </>
+      }
     >
       <ResetPasswordForm />
-
-      <p className={styles.footnote}>
-        Back to <Link href="/login">sign in</Link>
-      </p>
     </AuthFrame>
   );
 }

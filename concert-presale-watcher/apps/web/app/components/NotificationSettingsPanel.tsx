@@ -1,8 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useId, useState } from "react";
-import type { NotificationSettingsResponse } from "../../lib/types";
-import styles from "../dashboard/dashboard.module.css";
+import { FormEvent, useEffect, useId, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { StatusDot } from "@/components/status-dot";
+import type { Tone } from "@/lib/eventDisplay";
+import type { NotificationSettingsResponse } from "@/lib/types";
 
 interface NotificationSettingsPanelProps {
   settings: NotificationSettingsResponse | null;
@@ -23,15 +31,115 @@ interface NotificationSettingsPanelProps {
 
 type NotificationChannel = "discord" | "email" | "sms";
 
-const getStatusText = (
+const channelStatus = (
   configured: boolean,
   enabled: boolean,
   confirmed?: boolean,
-): string => {
-  if (!configured) return "Not set";
-  if (confirmed === false) return enabled ? "Needs confirmation" : "Saved, off";
-  return enabled ? "On" : "Saved, off";
+): { tone: Tone; text: string } => {
+  if (!configured) return { tone: "muted", text: "Not set up" };
+  if (!enabled) return { tone: "muted", text: "Off" };
+  if (confirmed === false) return { tone: "warning", text: "Needs confirmation" };
+  return { tone: "positive", text: "On" };
 };
+
+interface ChannelSectionProps {
+  title: string;
+  status: { tone: Tone; text: string };
+  masked: string | null | undefined;
+  configured: boolean;
+  enabled: boolean;
+  onEnabledChange: (value: boolean) => void;
+  switchLabel: string;
+  editLabel: string;
+  editing: boolean;
+  onEditingChange: (value: boolean) => void;
+  field: ReactNode;
+  primaryAction?: ReactNode;
+  onRemove?: () => void;
+  removeDisabled?: boolean;
+  extra?: ReactNode;
+}
+
+function ChannelSection({
+  title,
+  status,
+  masked,
+  configured,
+  enabled,
+  onEnabledChange,
+  switchLabel,
+  editLabel,
+  editing,
+  onEditingChange,
+  field,
+  primaryAction,
+  onRemove,
+  removeDisabled,
+  extra,
+}: ChannelSectionProps) {
+  return (
+    <section className="flex flex-col gap-3 py-5 first:pt-0">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h3 className="text-sm leading-5 font-medium text-foreground">{title}</h3>
+          <div className="flex min-w-0 items-center gap-2">
+            <StatusDot tone={status.tone}>{status.text}</StatusDot>
+            {masked ? (
+              <span className="truncate text-[13px] leading-5 text-faint">{masked}</span>
+            ) : null}
+          </div>
+        </div>
+        <Switch
+          checked={enabled}
+          onCheckedChange={onEnabledChange}
+          aria-label={switchLabel}
+          className="mt-0.5"
+        />
+      </div>
+
+      <Collapsible
+        open={!configured || editing}
+        onOpenChange={onEditingChange}
+        className="flex flex-col gap-3"
+      >
+        {configured ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {primaryAction}
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="group/edit text-muted-foreground"
+              >
+                {editLabel}
+                <ChevronDown
+                  aria-hidden="true"
+                  className="transition-transform duration-200 group-data-[state=open]/edit:rotate-180"
+                />
+              </Button>
+            </CollapsibleTrigger>
+            {onRemove ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="ml-auto text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                onClick={onRemove}
+                disabled={removeDisabled}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        <CollapsibleContent className="flex flex-col gap-3">{field}</CollapsibleContent>
+      </Collapsible>
+
+      {extra}
+    </section>
+  );
+}
 
 export default function NotificationSettingsPanel({
   settings,
@@ -51,8 +159,11 @@ export default function NotificationSettingsPanel({
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [expandedChannel, setExpandedChannel] =
-    useState<NotificationChannel | null>(null);
+  const [editing, setEditing] = useState<Record<NotificationChannel, boolean>>({
+    discord: false,
+    email: false,
+    sms: false,
+  });
 
   useEffect(() => {
     if (!settings) {
@@ -79,6 +190,7 @@ export default function NotificationSettingsPanel({
       setDiscordWebhook("");
       setEmail("");
       setPhone("");
+      setEditing({ discord: false, email: false, sms: false });
     } finally {
       setSaving(false);
     }
@@ -89,281 +201,180 @@ export default function NotificationSettingsPanel({
     setSmsCode("");
   };
 
-  const toggleChannel = (channel: NotificationChannel) => {
-    setExpandedChannel((current) => (current === channel ? null : channel));
-  };
+  const setChannelEditing = (channel: NotificationChannel) => (value: boolean) =>
+    setEditing((current) => ({ ...current, [channel]: value }));
 
   const disabled = busy || saving;
-  const discordStatus = getStatusText(
-    Boolean(settings?.discordWebhook.configured),
-    discordEnabled,
-  );
-  const emailStatus = getStatusText(
-    Boolean(settings?.email.configured),
-    emailEnabled,
-    settings?.email.confirmed,
-  );
-  const smsStatus = getStatusText(
-    Boolean(settings?.phone.configured),
-    smsEnabled,
-    settings?.phone.confirmed,
-  );
+  const emailConfigured = Boolean(settings?.email.configured);
+  const discordConfigured = Boolean(settings?.discordWebhook.configured);
+  const phoneConfigured = Boolean(settings?.phone.configured);
 
   return (
-    <form className={styles.notificationStack} onSubmit={handleSave}>
-      <section className={styles.channelCard}>
-        <button
-          type="button"
-          className={styles.channelHeader}
-          aria-expanded={expandedChannel === "discord"}
-          aria-controls={`${uid}-discord-panel`}
-          onClick={() => toggleChannel("discord")}
-        >
-          <span>Discord</span>
-          <span className={styles.channelMeta}>
-            <span className={styles.pill}>{discordStatus}</span>
-            <span className={styles.channelChevron} aria-hidden="true">
-              {expandedChannel === "discord" ? "v" : ">"}
-            </span>
-          </span>
-        </button>
-        {expandedChannel === "discord" ? (
-          <div id={`${uid}-discord-panel`} className={styles.channelBody}>
-            <label className={styles.checkRow}>
-              <input
-                type="checkbox"
-                checked={discordEnabled}
-                onChange={(event) => setDiscordEnabled(event.target.checked)}
-              />
-              Send Discord alerts
-            </label>
-            <label htmlFor={`${uid}-discord`} className="srOnly">
-              Discord webhook URL
-            </label>
-            <input
+    <form className="flex min-h-full flex-col" onSubmit={handleSave}>
+      <ChannelSection
+        title="Email"
+        status={channelStatus(emailConfigured, emailEnabled, settings?.email.confirmed)}
+        masked={settings?.email.masked}
+        configured={emailConfigured}
+        enabled={emailEnabled}
+        onEnabledChange={setEmailEnabled}
+        switchLabel="Send email alerts"
+        editLabel="Edit address"
+        editing={editing.email}
+        onEditingChange={setChannelEditing("email")}
+        field={
+          <Field className="gap-2">
+            <FieldLabel htmlFor={`${uid}-email`}>Email address</FieldLabel>
+            <Input
+              id={`${uid}-email`}
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder={settings?.email.masked ?? "you@example.com"}
+            />
+          </Field>
+        }
+        primaryAction={
+          settings?.email.confirmed ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void onSendEmailConfirmation()}
+              disabled={disabled}
+            >
+              Send confirmation
+            </Button>
+          )
+        }
+        onRemove={() =>
+          void onSave({ email: null, emailEnabled: false, discordEnabled, smsEnabled })
+        }
+        removeDisabled={disabled}
+      />
+
+      <Separator />
+
+      <ChannelSection
+        title="Discord"
+        status={channelStatus(discordConfigured, discordEnabled)}
+        masked={settings?.discordWebhook.masked}
+        configured={discordConfigured}
+        enabled={discordEnabled}
+        onEnabledChange={setDiscordEnabled}
+        switchLabel="Send Discord alerts"
+        editLabel="Edit webhook"
+        editing={editing.discord}
+        onEditingChange={setChannelEditing("discord")}
+        field={
+          <Field className="gap-2">
+            <FieldLabel htmlFor={`${uid}-discord`}>Channel webhook URL</FieldLabel>
+            <Input
               id={`${uid}-discord`}
               type="url"
               value={discordWebhook}
               onChange={(event) => setDiscordWebhook(event.target.value)}
-              placeholder={
-                settings?.discordWebhook.masked ?? "Discord webhook URL"
-              }
+              placeholder="https://discord.com/api/webhooks/…"
             />
-            <div className={styles.actionRow}>
-              <span className={styles.pill}>
-                {getStatusText(
-                  Boolean(settings?.discordWebhook.configured),
-                  discordEnabled,
-                )}
-              </span>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={onTestDiscord}
-                disabled={disabled || !settings?.discordWebhook.configured}
-              >
-                Send Test
-              </button>
-              {settings?.discordWebhook.configured ? (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() =>
-                    onSave({
-                      discordWebhook: null,
-                      discordEnabled: false,
-                      emailEnabled,
-                      smsEnabled,
-                    })
-                  }
-                  disabled={disabled}
-                >
-                  Remove
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </section>
+          </Field>
+        }
+        primaryAction={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void onTestDiscord()}
+            disabled={disabled}
+          >
+            Send test
+          </Button>
+        }
+        onRemove={() =>
+          void onSave({ discordWebhook: null, discordEnabled: false, emailEnabled, smsEnabled })
+        }
+        removeDisabled={disabled}
+      />
 
-      <section className={styles.channelCard}>
-        <button
-          type="button"
-          className={styles.channelHeader}
-          aria-expanded={expandedChannel === "email"}
-          aria-controls={`${uid}-email-panel`}
-          onClick={() => toggleChannel("email")}
-        >
-          <span>Email</span>
-          <span className={styles.channelMeta}>
-            <span className={styles.pill}>{emailStatus}</span>
-            <span className={styles.channelChevron} aria-hidden="true">
-              {expandedChannel === "email" ? "v" : ">"}
-            </span>
-          </span>
-        </button>
-        {expandedChannel === "email" ? (
-          <div id={`${uid}-email-panel`} className={styles.channelBody}>
-            <label className={styles.checkRow}>
-              <input
-                type="checkbox"
-                checked={emailEnabled}
-                onChange={(event) => setEmailEnabled(event.target.checked)}
-              />
-              Send email alerts
-            </label>
-            <label htmlFor={`${uid}-email`} className="srOnly">
-              Email address
-            </label>
-            <input
-              id={`${uid}-email`}
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder={settings?.email.masked ?? "Email address"}
-            />
-            <div className={styles.actionRow}>
-              <span className={styles.pill}>
-                {getStatusText(
-                  Boolean(settings?.email.configured),
-                  emailEnabled,
-                  settings?.email.confirmed,
-                )}
-              </span>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={onSendEmailConfirmation}
-                disabled={disabled || !settings?.email.configured}
-              >
-                Send Confirmation
-              </button>
-              {settings?.email.configured ? (
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={() =>
-                    onSave({
-                      email: null,
-                      emailEnabled: false,
-                      discordEnabled,
-                      smsEnabled,
-                    })
-                  }
-                  disabled={disabled}
-                >
-                  Remove
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </section>
+      <Separator />
 
-      <section className={styles.channelCard}>
-        <button
-          type="button"
-          className={styles.channelHeader}
-          aria-expanded={expandedChannel === "sms"}
-          aria-controls={`${uid}-sms-panel`}
-          onClick={() => toggleChannel("sms")}
-        >
-          <span>SMS</span>
-          <span className={styles.channelMeta}>
-            <span className={styles.pill}>{smsStatus}</span>
-            <span className={styles.channelChevron} aria-hidden="true">
-              {expandedChannel === "sms" ? "v" : ">"}
-            </span>
-          </span>
-        </button>
-        {expandedChannel === "sms" ? (
-          <div id={`${uid}-sms-panel`} className={styles.channelBody}>
-            <label className={styles.checkRow}>
-              <input
-                type="checkbox"
-                checked={smsEnabled}
-                onChange={(event) => setSmsEnabled(event.target.checked)}
-              />
-              Send SMS alerts
-            </label>
-            <label htmlFor={`${uid}-phone`} className="srOnly">
-              Phone number
-            </label>
-            <input
+      <ChannelSection
+        title="SMS"
+        status={channelStatus(phoneConfigured, smsEnabled, settings?.phone.confirmed)}
+        masked={settings?.phone.masked}
+        configured={phoneConfigured}
+        enabled={smsEnabled}
+        onEnabledChange={setSmsEnabled}
+        switchLabel="Send SMS alerts"
+        editLabel="Edit number"
+        editing={editing.sms}
+        onEditingChange={setChannelEditing("sms")}
+        field={
+          <Field className="gap-2">
+            <FieldLabel htmlFor={`${uid}-phone`}>Phone number</FieldLabel>
+            <Input
               id={`${uid}-phone`}
               type="tel"
+              autoComplete="tel"
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
-              placeholder={
-                settings?.phone.masked ?? "Phone number, like +14155552671"
-              }
+              placeholder={settings?.phone.masked ?? "+14155552671"}
+              className="tabular"
             />
-            <div className={styles.actionRow}>
-              <span className={styles.pill}>
-                {getStatusText(
-                  Boolean(settings?.phone.configured),
-                  smsEnabled,
-                  settings?.phone.confirmed,
-                )}
-              </span>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={onSendSmsConfirmation}
-                disabled={disabled || !settings?.phone.configured}
-              >
-                Send Code
-              </button>
-              {settings?.phone.configured ? (
-                <button
+          </Field>
+        }
+        primaryAction={
+          settings?.phone.confirmed ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void onSendSmsConfirmation()}
+              disabled={disabled}
+            >
+              Send code
+            </Button>
+          )
+        }
+        onRemove={() =>
+          void onSave({ phone: null, smsEnabled: false, discordEnabled, emailEnabled })
+        }
+        removeDisabled={disabled}
+        extra={
+          phoneConfigured && !settings?.phone.confirmed ? (
+            <div className="flex flex-col gap-2">
+              <FieldLabel htmlFor={`${uid}-sms-code`}>Confirmation code</FieldLabel>
+              <div className="flex gap-2">
+                <Input
+                  id={`${uid}-sms-code`}
+                  value={smsCode}
+                  onChange={(event) => setSmsCode(event.target.value)}
+                  placeholder="123456"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className="max-w-40 font-mono tabular"
+                />
+                <Button
                   type="button"
-                  className={styles.secondaryButton}
-                  onClick={() =>
-                    onSave({
-                      phone: null,
-                      smsEnabled: false,
-                      discordEnabled,
-                      emailEnabled,
-                    })
-                  }
-                  disabled={disabled}
+                  variant="outline"
+                  onClick={() => void handleConfirmSms()}
+                  disabled={disabled || !smsCode.trim()}
                 >
-                  Remove
-                </button>
-              ) : null}
+                  Confirm code
+                </Button>
+              </div>
             </div>
-            <div className={styles.confirmRow}>
-              <label htmlFor={`${uid}-sms-code`} className="srOnly">
-                SMS confirmation code
-              </label>
-              <input
-                id={`${uid}-sms-code`}
-                value={smsCode}
-                onChange={(event) => setSmsCode(event.target.value)}
-                placeholder="SMS code"
-                inputMode="numeric"
-              />
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={handleConfirmSms}
-                disabled={disabled || !smsCode.trim()}
-              >
-                Confirm SMS
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </section>
+          ) : null
+        }
+      />
 
-      <div className={styles.notificationsSaveBar}>
-        <button
-          className={styles.primaryButton}
-          type="submit"
-          disabled={disabled}
-        >
-          {saving ? "Saving..." : "Save Alert Destinations"}
-        </button>
+      <div className="sticky bottom-0 -mx-6 -mb-6 mt-auto flex items-center justify-between gap-4 border-t bg-popover px-6 py-4">
+        <p className="text-[13px] leading-5 text-muted-foreground">
+          Switches and new addresses apply when you save
+        </p>
+        <Button type="submit" disabled={disabled} className="shrink-0">
+          {saving ? "Saving…" : "Save alert settings"}
+        </Button>
       </div>
     </form>
   );

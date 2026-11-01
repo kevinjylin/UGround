@@ -1,11 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
-import AuthFrame from "../components/AuthFrame";
+import { MailCheck } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import AuthFrame, { AuthLink } from "../components/AuthFrame";
 import ErrorBanner from "../components/ErrorBanner";
-import styles from "../auth.module.css";
 
 const getResetCallbackUrl = (): string => {
   const callbackUrl = new URL("/auth/callback", window.location.origin);
@@ -47,48 +50,47 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthFrame
-      kicker="Password reset"
-      title="Get back into your account."
-      lead="Send yourself a reset link and return to your watchlist."
+      title="Reset your password"
+      description="Enter the email you signed up with and we'll send a reset link."
+      footer={
+        <>
+          Remembered it? <AuthLink href="/login">Sign in</AuthLink>
+        </>
+      }
     >
       {submitted ? (
-        <div className={styles.successBanner} role="status" aria-live="polite">
-          If an account with that email exists, a reset link has been sent.
-          Check your inbox and spam folder.
-        </div>
+        <Alert role="status" aria-live="polite">
+          <MailCheck />
+          <AlertDescription className="text-foreground">
+            If an account with that email exists, a reset link is on its way. Check your inbox and
+            spam folder.
+          </AlertDescription>
+        </Alert>
       ) : (
-        <form className={styles.stack} onSubmit={submit}>
-          <label htmlFor="forgot-email" className="srOnly">
-            Email
-          </label>
-          <input
-            className={styles.field}
-            id="forgot-email"
-            type="email"
-            autoComplete="email"
-            autoFocus
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="Email"
-            required
-          />
-          <button
-            className={styles.primaryButton}
-            type="submit"
-            disabled={busy}
-          >
-            {busy ? "Sending..." : "Send reset link"}
-          </button>
+        <form onSubmit={submit}>
+          <FieldGroup className="gap-5">
+            <Field className="gap-2">
+              <FieldLabel htmlFor="forgot-email">Email</FieldLabel>
+              <Input
+                className="h-10"
+                id="forgot-email"
+                type="email"
+                autoComplete="email"
+                autoFocus
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                required
+              />
+            </Field>
+            <Button className="h-10 w-full" type="submit" disabled={busy}>
+              {busy ? "Sending…" : "Send reset link"}
+            </Button>
+          </FieldGroup>
         </form>
       )}
 
-      {error ? (
-        <ErrorBanner message={error} className={styles.errorBanner} />
-      ) : null}
-
-      <p className={styles.footnote}>
-        Remembered it? <Link href="/login">Sign in</Link>
-      </p>
+      {error ? <ErrorBanner message={error} /> : null}
     </AuthFrame>
   );
 }
