@@ -17,6 +17,8 @@ export const watchRuleSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("venue"),
     label: z.string().trim().min(2).max(160),
+    /** Set when the user picked the venue from search results. */
+    ticketmasterVenueId: optionalText(40),
     city: optionalText(120),
     state: optionalText(80),
     country: z.string().trim().length(2).default("US"),
@@ -27,8 +29,9 @@ export const watchRuleSchema = z.discriminatedUnion("kind", [
     city: optionalText(120),
     state: optionalText(80),
     country: z.string().trim().length(2).default("US"),
-    latitude: z.number().min(-90).max(90),
-    longitude: z.number().min(-180).max(180),
+    /** Optional: without coordinates, the area centers on the chosen city. */
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
     radiusMiles: z.number().int().min(1).max(500).default(50),
   }),
 ]);

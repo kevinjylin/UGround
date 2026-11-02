@@ -103,7 +103,7 @@ export default function DashboardPage() {
         await Promise.all([
           fetch("/api/watchlist", { cache: "no-store" }),
           fetch("/api/watch-rules", { cache: "no-store" }),
-          fetch("/api/events?limit=80", { cache: "no-store" }),
+          fetch("/api/events?limit=200", { cache: "no-store" }),
           fetch("/api/alerts?limit=60", { cache: "no-store" }),
           fetch("/api/notification-settings", { cache: "no-store" }),
         ]);
@@ -330,6 +330,16 @@ export default function DashboardPage() {
       : busy
         ? "Loading"
         : "Not checked yet";
+
+  const ruleLabelById = useMemo(
+    () =>
+      new Map(
+        watchRules
+          .filter((rule) => rule.kind !== "artist")
+          .map((rule) => [rule.id, rule.kind === "location" ? `${rule.label} area` : rule.label]),
+      ),
+    [watchRules],
+  );
 
   const followingSummary = useMemo(() => {
     const venues = watchRules.filter((rule) => rule.kind === "venue").length;
@@ -615,9 +625,10 @@ export default function DashboardPage() {
               <EventList
                 events={filteredSortedEvents}
                 alertsByEventId={alertsByEventId}
+                ruleLabelById={ruleLabelById}
                 totalEvents={events.length}
                 loading={busy && events.length === 0}
-                hasArtists={artists.length > 0}
+                hasArtists={artists.length > 0 || ruleLabelById.size > 0}
                 onOpenWatchlist={() => openSettings("watchlist")}
                 onClearFilter={() => setFilter("all")}
               />

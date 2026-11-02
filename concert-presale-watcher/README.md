@@ -86,6 +86,7 @@ Open `http://localhost:3000`.
 - `POST /api/integrations/spotify/import`
 - `GET /api/events`
 - `GET /api/alerts`
+- `GET /api/search/venues` (Ticketmaster venue search for venue watches)
 - `GET /api/source-status`
 - `GET/PUT /api/notification-settings`
 - `POST /api/notification-settings/test-discord`
@@ -122,4 +123,5 @@ Notes:
 
 - User refreshes enqueue bounded work and never receive infrastructure secrets.
 - If alert provider keys or user destinations are missing, alerts are still stored in DB.
+- Venue and area watches use Ticketmaster only. A venue job is shared by everyone who follows that venue. An area tracks shows within a radius of a listed city whose public on-sale is still ahead. A rule's first check saves shows without alerts; later checks alert on new and changed shows.
 - Eventbrite, AXS, and DICE remain disabled until approved partner access or a documented public-page terms review is complete.

@@ -63,7 +63,9 @@ const buildAlertMessage = (alertType: AlertType, previous: EventRecord | null, n
   return `On-sale moved earlier (${previous?.on_sale_start ?? "unknown"} -> ${next.on_sale_start ?? "unknown"})`;
 };
 
-const getAlertTypes = (previous: EventRecord | null, next: NormalizedEvent): AlertType[] => {
+type ChangeFields = Pick<NormalizedEvent, "status" | "ticket_url" | "on_sale_start" | "sale_windows">;
+
+export const getAlertTypes = (previous: EventRecord | null, next: ChangeFields): AlertType[] => {
   if (!previous) {
     return ["new_event"];
   }
@@ -201,7 +203,7 @@ const fetchAllSourcesForArtist = async (
   return events;
 };
 
-const persistAndDeliverAlert = async (
+export const persistAndDeliverAlert = async (
   alertType: AlertType,
   previous: EventRecord | null,
   savedEvent: EventRecord,

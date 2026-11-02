@@ -7,11 +7,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { relativeTime } from "@/lib/format";
 import { searchConcertMarkets, US_CONCERT_MARKETS, US_STATE_SUGGESTIONS } from "@/lib/locations";
-import type { ArtistSuggestion, LocationSuggestion, PollResult } from "@/lib/types";
+import type { ArtistSuggestion, LocationSuggestion, PollResult, VenueSuggestion } from "@/lib/types";
 import AutocompleteCombobox, { type ComboboxOption } from "./AutocompleteCombobox";
 
 const formatLocation = (city: string, stateRegion: string, country: string): string => {
@@ -36,6 +37,15 @@ const locationToOption = (location: LocationSuggestion): ComboboxOption => ({
   description: location.kind === "state" ? "All cities" : undefined,
   kind: "location",
 });
+
+const venueToOption = (venue: VenueSuggestion): ComboboxOption => ({
+  id: venue.id,
+  label: venue.name,
+  description: [venue.city, venue.state].filter(Boolean).join(", ") || undefined,
+  kind: "location",
+});
+
+const AREA_RADIUS_OPTIONS = ["10", "25", "50", "100"] as const;
 
 const LOCATION_BY_ID = new Map<string, LocationSuggestion>(
   [...US_CONCERT_MARKETS, ...US_STATE_SUGGESTIONS].map((location) => [location.id, location]),
@@ -103,10 +113,16 @@ export default function WatchlistPanel({
   const [playlistArtists, setPlaylistArtists] = useState<ArtistSuggestion[]>([]);
   const [selectedPlaylistArtists, setSelectedPlaylistArtists] = useState<string[]>([]);
   const [ruleKind, setRuleKind] = useState<"venue" | "location">("venue");
-  const [ruleLabel, setRuleLabel] = useState("");
-  const [latitude, setLatitude] = useState("");
-  const [longitude, setLongitude] = useState("");
-  const [radiusMiles, setRadiusMiles] = useState("50");
+  const [venueInput, setVenueInput] = useState("");
+  const [selectedVenue, setSelectedVenue] = useState<VenueSuggestion | null>(null);
+  const [venueSuggestions, setVenueSuggestions] = useState<VenueSuggestion[]>([]);
+  const [venueSearchLoading, setVenueSearchLoading] = useState(false);
+  const [venueSearchError, setVenueSearchError] = useState<string | null>(null);
+  const [areaInput, setAreaInput] = useState("");
+  const [selectedArea, setSelectedArea] = useState<LocationSuggestion | null>(null);
+  const [radiusMiles, setRadiusMiles] = useState<string>("50");
+  const [ruleSaving, setRuleSaving] = useState(false);
+  const [ruleError, setRuleError] = useState<string | null>(null);
   const uid = useId();
 
   const artistOptions = useMemo(() => artistSuggestions.map(artistToOption), [artistSuggestions]);
@@ -114,6 +130,57 @@ export default function WatchlistPanel({
     () => searchConcertMarkets(locationInput).map(locationToOption),
     [locationInput],
   );
+  const venueOptions = useMemo(() => venueSuggestions.map(venueToOption), [venueSuggestions]);
+  // Areas center on a known city, so states aren't offered here.
+  const areaOptions = useMemo(
+    () =>
+      searchConcertMarkets(areaInput)
+        .filter((location) => location.kind === "city")
+        .map(locationToOption),
+    [areaInput],
+  );
+
+  useEffect(() => {
+    const query = venueInput.trim();
+
+    if (query.length < 2 || selectedVenue?.name === venueInput) {
+      setVenueSuggestions([]);
+      setVenueSearchLoading(false);
+      setVenueSearchError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setVenueSearchLoading(true);
+      setVenueSearchError(null);
+
+      void fetch(`/api/search/venues?q=${encodeURIComponent(query)}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const body = (await response.json()) as { venues?: VenueSuggestion[]; error?: string };
+          if (!response.ok || body.error) {
+            throw new Error(body.error ?? "Venue search is unavailable right now.");
+          }
+          setVenueSuggestions(body.venues ?? []);
+        })
+        .catch((error) => {
+          if ((error as Error).name === "AbortError") return;
+          setVenueSuggestions([]);
+          setVenueSearchError((error as Error).message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setVenueSearchLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [venueInput, selectedVenue]);
 
   useEffect(() => {
     const query = artistName.trim();
@@ -208,27 +275,71 @@ export default function WatchlistPanel({
 
   const handleAdditionalRule = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await onAddWatchRule(
-      ruleKind === "venue"
-        ? {
-            kind: "venue",
-            label: ruleLabel,
-            city: city || undefined,
-            state: stateRegion || undefined,
-            country,
-          }
-        : {
-            kind: "location",
-            label: ruleLabel,
-            city: city || undefined,
-            state: stateRegion || undefined,
-            country,
-            latitude: Number(latitude),
-            longitude: Number(longitude),
-            radiusMiles: Number(radiusMiles),
-          },
-    );
-    setRuleLabel("");
+    if (ruleKind === "location" && !selectedArea) {
+      setRuleError("Pick a city from the list to center the area on.");
+      return;
+    }
+
+    setRuleSaving(true);
+    setRuleError(null);
+    try {
+      if (ruleKind === "venue") {
+        await onAddWatchRule({
+          kind: "venue",
+          label: selectedVenue?.name ?? venueInput.trim(),
+          ticketmasterVenueId: selectedVenue?.id,
+          city: selectedVenue?.city ?? undefined,
+          state: selectedVenue?.state ?? undefined,
+          country: selectedVenue?.country ?? "US",
+        });
+        setVenueInput("");
+        setSelectedVenue(null);
+        setVenueSuggestions([]);
+      } else if (selectedArea) {
+        await onAddWatchRule({
+          kind: "location",
+          label: selectedArea.label,
+          city: selectedArea.city,
+          state: selectedArea.state,
+          country: selectedArea.country,
+          radiusMiles: Number(radiusMiles),
+        });
+        setAreaInput("");
+        setSelectedArea(null);
+      }
+    } catch (error) {
+      setRuleError((error as Error).message);
+    } finally {
+      setRuleSaving(false);
+    }
+  };
+
+  const handleVenueValueChange = (value: string) => {
+    setVenueInput(value);
+    setRuleError(null);
+    if (selectedVenue && selectedVenue.name !== value) setSelectedVenue(null);
+  };
+
+  const handleVenueSelect = (option: ComboboxOption) => {
+    const venue = venueSuggestions.find((item) => item.id === option.id);
+    if (!venue) return;
+    setSelectedVenue(venue);
+    setVenueInput(venue.name);
+    setVenueSuggestions([]);
+    setVenueSearchError(null);
+  };
+
+  const handleAreaValueChange = (value: string) => {
+    setAreaInput(value);
+    setRuleError(null);
+    if (selectedArea && selectedArea.label !== value) setSelectedArea(null);
+  };
+
+  const handleAreaSelect = (option: ComboboxOption) => {
+    const location = LOCATION_BY_ID.get(option.id);
+    if (!location) return;
+    setSelectedArea(location);
+    setAreaInput(location.label);
   };
 
   const handleArtistSelect = (option: ComboboxOption) => {
@@ -330,7 +441,7 @@ export default function WatchlistPanel({
           <form className="flex flex-col gap-4" onSubmit={handleAdditionalRule}>
             <SectionHeading
               title="Follow a venue or area"
-              description="Hear about every show at one venue, or within a radius of a point."
+              description="Hear about every concert at one venue, or about shows going on sale near a city."
             />
             <ToggleGroup
               type="single"
@@ -339,7 +450,10 @@ export default function WatchlistPanel({
               spacing={0}
               value={ruleKind}
               onValueChange={(value) => {
-                if (value === "venue" || value === "location") setRuleKind(value);
+                if (value === "venue" || value === "location") {
+                  setRuleKind(value);
+                  setRuleError(null);
+                }
               }}
               aria-label="Watch type"
             >
@@ -359,68 +473,81 @@ export default function WatchlistPanel({
               ))}
             </ToggleGroup>
 
-            <Field className="gap-2">
-              <FieldLabel htmlFor={`${uid}-rule-label`}>
-                {ruleKind === "venue" ? "Venue name" : "Area name"}
-              </FieldLabel>
-              <Input
-                id={`${uid}-rule-label`}
-                value={ruleLabel}
-                onChange={(event) => setRuleLabel(event.target.value)}
-                placeholder={ruleKind === "venue" ? "Empty Bottle" : "Chicago and suburbs"}
+            {ruleKind === "venue" ? (
+              <AutocompleteCombobox
+                id={`${uid}-venue`}
+                label="Venue"
+                value={venueInput}
+                placeholder="Search venues"
                 required
-                maxLength={160}
+                disabled={busy || ruleSaving}
+                options={venueOptions}
+                loading={venueSearchLoading}
+                error={venueSearchError}
+                emptyMessage="No match on Ticketmaster. Try the venue's full name"
+                showEmptyMessage={
+                  venueInput.trim().length >= 2 && !selectedVenue && !venueSearchLoading
+                }
+                statusMessage={
+                  selectedVenue
+                    ? `Ticketmaster venue${selectedVenue.address ? ` at ${selectedVenue.address}` : ""}`
+                    : null
+                }
+                onValueChange={handleVenueValueChange}
+                onSelect={handleVenueSelect}
               />
-            </Field>
-
-            {ruleKind === "location" ? (
-              <div className="grid grid-cols-3 gap-3">
+            ) : (
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+                <AutocompleteCombobox
+                  id={`${uid}-area`}
+                  label="Near"
+                  value={areaInput}
+                  placeholder="Search cities"
+                  required
+                  disabled={busy || ruleSaving}
+                  options={areaOptions}
+                  emptyMessage="Not a listed city. Pick the nearest one"
+                  showEmptyMessage={Boolean(areaInput.trim()) && !selectedArea}
+                  onValueChange={handleAreaValueChange}
+                  onSelect={handleAreaSelect}
+                />
                 <Field className="gap-2">
-                  <FieldLabel htmlFor={`${uid}-latitude`}>Latitude</FieldLabel>
-                  <Input
-                    id={`${uid}-latitude`}
-                    type="number"
-                    min="-90"
-                    max="90"
-                    step="any"
-                    value={latitude}
-                    onChange={(event) => setLatitude(event.target.value)}
-                    required
-                    className="tabular"
-                  />
-                </Field>
-                <Field className="gap-2">
-                  <FieldLabel htmlFor={`${uid}-longitude`}>Longitude</FieldLabel>
-                  <Input
-                    id={`${uid}-longitude`}
-                    type="number"
-                    min="-180"
-                    max="180"
-                    step="any"
-                    value={longitude}
-                    onChange={(event) => setLongitude(event.target.value)}
-                    required
-                    className="tabular"
-                  />
-                </Field>
-                <Field className="gap-2">
-                  <FieldLabel htmlFor={`${uid}-radius`}>Radius (mi)</FieldLabel>
-                  <Input
-                    id={`${uid}-radius`}
-                    type="number"
-                    min="1"
-                    max="500"
-                    value={radiusMiles}
-                    onChange={(event) => setRadiusMiles(event.target.value)}
-                    required
-                    className="tabular"
-                  />
+                  <FieldLabel id={`${uid}-radius-label`}>Within</FieldLabel>
+                  <Select value={radiusMiles} onValueChange={setRadiusMiles}>
+                    <SelectTrigger aria-labelledby={`${uid}-radius-label`} className="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {AREA_RADIUS_OPTIONS.map((miles) => (
+                        <SelectItem key={miles} value={miles}>
+                          {miles} mi
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
               </div>
+            )}
+
+            <FieldDescription>
+              {ruleKind === "venue"
+                ? "The first check fills your feed quietly. After that, new shows and changes alert you."
+                : "Tracks shows not on sale yet. The first check fills your feed quietly; later announcements alert you."}
+            </FieldDescription>
+
+            {ruleError ? (
+              <p role="alert" className="text-[13px] leading-5 text-destructive">
+                {ruleError}
+              </p>
             ) : null}
 
-            <Button type="submit" variant="outline" disabled={busy} className="self-start">
-              {ruleKind === "venue" ? "Add venue" : "Add area"}
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={busy || ruleSaving}
+              className="self-start"
+            >
+              {ruleSaving ? "Adding…" : ruleKind === "venue" ? "Add venue" : "Add area"}
             </Button>
           </form>
 

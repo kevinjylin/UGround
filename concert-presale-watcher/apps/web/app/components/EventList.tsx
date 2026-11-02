@@ -52,11 +52,13 @@ function EventDate({ value }: { value: string | null }) {
 interface EventRowProps {
   event: EventRecord;
   alerts: AlertRecord[];
+  /** The venue or area watch that found this show, when it wasn't an artist watch. */
+  foundBy?: string | null;
   expanded: boolean;
   onToggleExpanded: () => void;
 }
 
-function EventRow({ event, alerts, expanded, onToggleExpanded }: EventRowProps) {
+function EventRow({ event, alerts, foundBy, expanded, onToggleExpanded }: EventRowProps) {
   const latestAlert = alerts[0];
   const title = extraTitle(event);
   const timelineId = `timeline-${event.id}`;
@@ -76,6 +78,10 @@ function EventRow({ event, alerts, expanded, onToggleExpanded }: EventRowProps) 
         </p>
         <p className="mt-0.5 truncate text-[13px] leading-5 text-muted-foreground">
           {placeLine(event) || "Venue to be announced"}
+          {/* A venue watch's name is already the venue on the line, so only say it otherwise. */}
+          {foundBy && foundBy.toLowerCase() !== event.venue?.toLowerCase() ? (
+            <span className="text-faint"> · via {foundBy}</span>
+          ) : null}
         </p>
 
         {windows.length > 0 ? (
@@ -260,6 +266,8 @@ function Onboarding({ onOpenWatchlist }: { onOpenWatchlist: () => void }) {
 interface EventListProps {
   events: EventRecord[];
   alertsByEventId: Map<string, AlertRecord[]>;
+  /** Labels for venue and area watches, by rule id. */
+  ruleLabelById?: Map<string, string>;
   totalEvents?: number;
   loading?: boolean;
   hasArtists?: boolean;
@@ -270,6 +278,7 @@ interface EventListProps {
 export default function EventList({
   events,
   alertsByEventId,
+  ruleLabelById,
   totalEvents,
   loading,
   hasArtists,
@@ -301,7 +310,7 @@ export default function EventList({
         <p className="mt-1 max-w-sm text-[13px] leading-5 text-muted-foreground">
           {hasAnyEvents
             ? "Try another filter, or refresh to queue a new check."
-            : "Your artists don't have upcoming shows in the sources yet. New dates show up after the next daily check."}
+            : "Nothing you follow has upcoming shows in the sources yet. New dates show up after the next daily check."}
         </p>
         {hasAnyEvents && onClearFilter ? (
           <Button variant="outline" size="sm" className="mt-4" onClick={onClearFilter}>
@@ -327,6 +336,11 @@ export default function EventList({
               key={event.id}
               event={event}
               alerts={alertsByEventId.get(event.id) ?? []}
+              foundBy={
+                !event.watch_artist_id && event.watch_rule_id
+                  ? ruleLabelById?.get(event.watch_rule_id)
+                  : null
+              }
               expanded={expandedEventIds.has(event.id)}
               onToggleExpanded={() => toggleExpanded(event.id)}
             />

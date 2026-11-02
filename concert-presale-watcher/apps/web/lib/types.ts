@@ -43,6 +43,8 @@ export interface WatchRule {
   longitude: number | null;
   radius_miles: number | null;
   legacy_watch_artist_id: string | null;
+  /** Set after the rule's first check; alerts only fire after that. */
+  baseline_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -151,6 +153,7 @@ export interface EventRecord {
   source_slug: SourceSlug;
   source_event_id: string;
   watch_artist_id: string | null;
+  watch_rule_id: string | null;
   artist_name: string;
   title: string;
   venue: string | null;
@@ -247,6 +250,21 @@ export interface NormalizedEvent {
   sale_windows?: SaleWindow[];
   dedupe_key: string;
   raw_json: unknown;
+}
+
+/** An event found by a venue or area search, before it's tied to a user. */
+export type DiscoveredEvent = Omit<NormalizedEvent, "user_id" | "watch_artist_id">;
+
+export interface VenueSuggestion {
+  /** Ticketmaster venue id. */
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface PollResult {

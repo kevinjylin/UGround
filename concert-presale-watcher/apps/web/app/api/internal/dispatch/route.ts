@@ -4,13 +4,16 @@ import { internalErrorResponse } from "../../../../lib/apiError";
 import { deliverAlertChannel } from "../../../../lib/alerts";
 import { isPollRequestAuthorized } from "../../../../lib/pollAuth";
 import { isSourceRunnable, runPollForArtist } from "../../../../lib/poller";
+import { runLocationJob, runVenueJob } from "../../../../lib/ruleWatcher";
 import {
   claimPollJobs,
   completePollJob,
   deferPollJob,
+  deletePollJob,
   getAlertById,
   getEventById,
   listPendingDeliveries,
+  RULE_JOB_SOURCES,
   syncPollJobs,
   updateDelivery,
 } from "../../../../lib/supabase";
@@ -50,8 +53,41 @@ export async function POST(request: Request) {
         drained = true;
         break;
       }
-      // Venue and area watching have no adapter yet. Push these out a day so
-      // they stop taking turns from artist jobs.
+      if (job.target_type === "venue" || job.target_type === "location") {
+        // Only some sources can search by venue or area. Jobs for the rest
+        // can never run, so drop them instead of deferring forever.
+        if (!RULE_JOB_SOURCES.includes(job.source_slug)) {
+          await deletePollJob(job.id);
+          results.push({ id: job.id, source: job.source_slug, status: "skipped" });
+          continue;
+        }
+        if (!isSourceRunnable(job.source_slug)) {
+          await deferPollJob(job, `${job.source_slug} is not configured.`);
+          results.push({ id: job.id, source: job.source_slug, status: "skipped" });
+          continue;
+        }
+        try {
+          const outcome =
+            job.target_type === "venue" ? await runVenueJob(job) : await runLocationJob(job);
+          if (outcome.kind === "gone") {
+            await deletePollJob(job.id);
+            results.push({ id: job.id, source: job.source_slug, status: "skipped", error: outcome.reason });
+          } else if (outcome.kind === "unresolved") {
+            await deferPollJob(job, outcome.reason);
+            results.push({ id: job.id, source: job.source_slug, status: "skipped", error: outcome.reason });
+          } else {
+            await completePollJob(job);
+            results.push({ id: job.id, source: job.source_slug, status: "succeeded" });
+          }
+        } catch (error) {
+          const message = (error as Error).message;
+          await completePollJob(job, message);
+          results.push({ id: job.id, source: job.source_slug, status: "failed", error: message });
+        }
+        continue;
+      }
+      // Artist rules without a legacy watchlist row have no runner. Push these
+      // out a day so they stop taking turns from runnable jobs.
       if (job.target_type !== "legacy_user" || !job.user_id) {
         await deferPollJob(job, `Polling by ${job.target_type} is not supported yet.`);
         results.push({ id: job.id, source: job.source_slug, status: "skipped" });

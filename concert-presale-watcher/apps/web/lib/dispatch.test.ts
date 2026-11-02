@@ -127,6 +127,9 @@ test("dispatcher runs artist jobs, skips unrunnable ones, and drains the queue",
   const sync = state.calls.find(
     (call) => call.method === "POST" && call.url.includes("/poll_jobs?on_conflict="),
   );
+  const syncQuery = state.calls.find(
+    (call) => call.method === "GET" && call.url.includes("/watch_rules?"),
+  );
   assert.ok(sync?.prefer?.includes("resolution=ignore-duplicates"));
   assert.ok(
     (sync?.body as Array<{ source_slug: string; target_type: string; target_id: string }>).some(
@@ -137,12 +140,18 @@ test("dispatcher runs artist jobs, skips unrunnable ones, and drains the queue",
     ),
   );
 
-  // Skipped jobs are pushed out about a day instead of retried within the hour.
-  for (const id of ["venue-job", "axs-job"]) {
-    const [patch] = patchesTo(`/poll_jobs?id=eq.${id}`);
-    const nextPollAt = new Date((patch?.body as { next_poll_at: string }).next_poll_at).getTime();
-    assert.ok(nextPollAt - Date.now() > 23 * 3600 * 1000, `${id} should be deferred a day`);
-  }
+  // An unconfigured source is pushed out about a day instead of retried within the hour.
+  const [patch] = patchesTo("/poll_jobs?id=eq.axs-job");
+  const nextPollAt = new Date((patch?.body as { next_poll_at: string }).next_poll_at).getTime();
+  assert.ok(nextPollAt - Date.now() > 23 * 3600 * 1000, "axs-job should be deferred a day");
+
+  // A venue nobody follows any more has its job removed.
+  assert.ok(
+    state.calls.some((call) => call.method === "DELETE" && call.url.includes("/poll_jobs?id=eq.venue-job")),
+  );
+
+  // Sync also picks up venue and area rules, not just artists.
+  assert.match(decodeURIComponent(syncQuery?.url ?? ""), /kind\.in\.\(venue,location\)/);
 
   // Ticketmaster was called and its health recorded as a success.
   assert.ok(state.calls.some((call) => call.url.startsWith("https://app.ticketmaster.com/")));

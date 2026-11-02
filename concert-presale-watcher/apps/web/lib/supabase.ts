@@ -2,15 +2,28 @@ import { assertSupabaseConfig, env } from "./env";
 import type {
   AlertRecord,
   AlertType,
+  DiscoveredEvent,
   EventRecord,
   NormalizedEvent,
   NotificationSettingsRecord,
   PollJob,
   SourceStatus,
   SnapshotRecord,
+  VenueSuggestion,
   WatchArtist,
   WatchRule,
 } from "./types";
+
+export interface VenueRecord {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  country: string;
+  latitude: number | null;
+  longitude: number | null;
+  source_refs: Record<string, string>;
+}
 
 interface CreateWatchArtistInput {
   userId: string;
@@ -205,6 +218,8 @@ export const createWatchRule = async (input: {
   latitude?: number;
   longitude?: number;
   radiusMiles?: number;
+  /** The Ticketmaster venue a venue rule follows. */
+  venue?: VenueSuggestion;
 }): Promise<WatchRule> => {
   let artistId: string | null = null;
   let venueId: string | null = null;
@@ -228,29 +243,13 @@ export const createWatchRule = async (input: {
   }
 
   if (input.kind === "venue") {
-    const existing = await supabaseRequest<Array<{ id: string }>>(
-      `/venues?select=id&normalized_name=eq.${encodeURIComponent(normalizedLabel)}&city=eq.${encodeURIComponent(input.city ?? "")}&limit=1`,
-    );
-    if (existing[0]) {
-      venueId = existing[0].id;
-    } else {
-      const venue = await supabaseRequest<{ id: string }>(
-        "/venues?select=id",
-        {
-          method: "POST",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify({
-            name: input.label.trim(),
-            normalized_name: normalizedLabel,
-            city: input.city ?? null,
-            state: input.state ?? null,
-            country: input.country,
-          }),
-        },
-        true,
-      );
-      venueId = venue.id;
-    }
+    venueId = await findOrCreateVenue({
+      name: input.label.trim(),
+      city: input.city ?? null,
+      state: input.state ?? null,
+      country: input.country,
+      ticketmaster: input.venue,
+    });
   }
 
   const rule = await supabaseRequest<WatchRule>(
@@ -285,6 +284,20 @@ export const listWatchRules = async (userId: string): Promise<WatchRule[]> =>
   );
 
 export const deleteWatchRule = async (id: string, userId: string): Promise<void> => {
+  const encodedId = encodeURIComponent(id);
+  const encodedUser = encodeURIComponent(userId);
+  // Remove the shows only this rule found. Ones an artist watch also covers stay.
+  // This runs first because deleting the rule clears events.watch_rule_id.
+  await supabaseRequest<void>(
+    `/events?watch_rule_id=eq.${encodedId}&user_id=eq.${encodedUser}&watch_artist_id=is.null`,
+    { method: "DELETE", headers: { Prefer: "return=minimal" } },
+  );
+  // An area job belongs to one rule. A venue job is shared, and the dispatcher
+  // removes it once nobody follows the venue.
+  await supabaseRequest<void>(
+    `/poll_jobs?target_type=eq.location&target_id=eq.${encodedId}`,
+    { method: "DELETE", headers: { Prefer: "return=minimal" } },
+  );
   await supabaseRequest<void>(
     `/watch_rules?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(userId)}`,
     { method: "DELETE", headers: { Prefer: "return=minimal" } },
@@ -293,28 +306,83 @@ export const deleteWatchRule = async (id: string, userId: string): Promise<void>
 
 const POLL_JOB_SOURCES = ["ticketmaster", "eventbrite", "songkick", "bandsintown", "axs", "dice"];
 
+/** Only Ticketmaster can search by venue or by area. */
+export const RULE_JOB_SOURCES = ["ticketmaster"];
+
+/** Venues change slowly; areas cost a heavier query, so they run less often. */
+const RULE_CADENCE_SECONDS = { venue: 1800, location: 3 * 3600 } as const;
+
 type PollJobRule = Pick<WatchRule, "id" | "user_id" | "kind" | "artist_id" | "venue_id" | "legacy_watch_artist_id">;
 
-const buildPollJobRows = (rule: PollJobRule, priority: number) => {
-  const targetId = rule.artist_id ?? rule.venue_id ?? rule.id;
-  return POLL_JOB_SOURCES.map((sourceSlug) => ({
-    source_slug: sourceSlug,
-    target_type: rule.legacy_watch_artist_id ? "legacy_user" : rule.kind,
-    target_id: rule.legacy_watch_artist_id
-      ? `${rule.user_id}:${rule.legacy_watch_artist_id}`
-      : targetId,
-    user_id: rule.user_id,
-    priority,
-    next_poll_at: new Date().toISOString(),
-    cadence_seconds: 1800,
-    lease_owner: null,
-    lease_expires_at: null,
-  }));
+interface PollJobRow {
+  source_slug: string;
+  target_type: PollJob["target_type"];
+  target_id: string;
+  user_id: string | null;
+  priority: number;
+  next_poll_at: string;
+  cadence_seconds: number;
+  lease_owner: null;
+  lease_expires_at: null;
+}
+
+const pollJobRow = (
+  fields: Pick<PollJobRow, "source_slug" | "target_type" | "target_id" | "user_id" | "priority" | "cadence_seconds">,
+): PollJobRow => ({
+  ...fields,
+  next_poll_at: new Date().toISOString(),
+  lease_owner: null,
+  lease_expires_at: null,
+});
+
+const buildPollJobRows = (rule: PollJobRule, priority: number): PollJobRow[] => {
+  if (rule.legacy_watch_artist_id) {
+    return POLL_JOB_SOURCES.map((sourceSlug) =>
+      pollJobRow({
+        source_slug: sourceSlug,
+        target_type: "legacy_user",
+        target_id: `${rule.user_id}:${rule.legacy_watch_artist_id}`,
+        user_id: rule.user_id,
+        priority,
+        cadence_seconds: 1800,
+      }),
+    );
+  }
+
+  // One job per venue, shared by everyone who follows it, so it has no owner.
+  if (rule.kind === "venue" && rule.venue_id) {
+    return RULE_JOB_SOURCES.map((sourceSlug) =>
+      pollJobRow({
+        source_slug: sourceSlug,
+        target_type: "venue",
+        target_id: rule.venue_id as string,
+        user_id: null,
+        priority,
+        cadence_seconds: RULE_CADENCE_SECONDS.venue,
+      }),
+    );
+  }
+
+  if (rule.kind === "location") {
+    return RULE_JOB_SOURCES.map((sourceSlug) =>
+      pollJobRow({
+        source_slug: sourceSlug,
+        target_type: "location",
+        target_id: rule.id,
+        user_id: rule.user_id,
+        priority,
+        cadence_seconds: RULE_CADENCE_SECONDS.location,
+      }),
+    );
+  }
+
+  // Artist rules without a legacy watchlist row have nothing to run.
+  return [];
 };
 
 // "merge" re-queues existing jobs to run now; "ignore" only adds missing ones.
 const upsertPollJobs = async (
-  rows: ReturnType<typeof buildPollJobRows>,
+  rows: PollJobRow[],
   resolution: "merge" | "ignore",
 ): Promise<void> => {
   if (rows.length === 0) return;
@@ -338,8 +406,8 @@ export const enqueuePollJobsForRule = async (
 };
 
 /**
- * Add poll jobs for every followed artist that doesn't have them yet.
- * Artists followed before the job queue existed never got any, so the
+ * Add poll jobs for every followed artist, venue, and area that doesn't have
+ * them yet. Rules created before the job queue existed never got any, so the
  * dispatcher had nothing to run for them. Existing jobs are left alone.
  */
 export const syncPollJobs = async (): Promise<number> => {
@@ -347,7 +415,7 @@ export const syncPollJobs = async (): Promise<number> => {
   let synced = 0;
   for (let offset = 0; ; offset += pageSize) {
     const rules = await supabaseRequest<PollJobRule[]>(
-      `/watch_rules?select=id,user_id,kind,artist_id,venue_id,legacy_watch_artist_id&legacy_watch_artist_id=not.is.null&order=id&limit=${pageSize}&offset=${offset}`,
+      `/watch_rules?select=id,user_id,kind,artist_id,venue_id,legacy_watch_artist_id&or=(legacy_watch_artist_id.not.is.null,kind.in.(venue,location))&order=id&limit=${pageSize}&offset=${offset}`,
     );
     await upsertPollJobs(rules.flatMap((rule) => buildPollJobRows(rule, 10)), "ignore");
     synced += rules.length;
@@ -384,10 +452,8 @@ export const queueUserRefresh = async (userId: string): Promise<number> => {
     return artists.length * 2;
   }
 
-  // Upsert rather than PATCH so artists with no jobs yet get them too.
-  const rows = rules
-    .filter((rule) => rule.legacy_watch_artist_id)
-    .flatMap((rule) => buildPollJobRows(rule, 100));
+  // Upsert rather than PATCH so rules with no jobs yet get them too.
+  const rows = rules.flatMap((rule) => buildPollJobRows(rule, 100));
   await upsertPollJobs(rows, "merge");
   return rows.length;
 };
@@ -437,6 +503,163 @@ export const deferPollJob = async (
       lease_expires_at: null,
       last_error: reason.slice(0, 1000),
     }),
+  });
+};
+
+export const deletePollJob = async (jobId: string): Promise<void> => {
+  await supabaseRequest<void>(`/poll_jobs?id=eq.${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" },
+  });
+};
+
+export const getWatchRuleById = async (id: string): Promise<WatchRule | null> => {
+  const rows = await supabaseRequest<WatchRule[]>(
+    `/watch_rules?select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
+  );
+  return rows[0] ?? null;
+};
+
+export const listVenueWatchRules = async (venueId: string): Promise<WatchRule[]> => {
+  const rows = await supabaseRequest<WatchRule[]>(
+    `/watch_rules?select=*&kind=eq.venue&venue_id=eq.${encodeURIComponent(venueId)}`,
+  );
+  return rows.filter((rule) => rule.kind === "venue" && rule.venue_id === venueId);
+};
+
+export const markRuleBaselined = async (ruleId: string): Promise<void> => {
+  await supabaseRequest<void>(`/watch_rules?id=eq.${encodeURIComponent(ruleId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ baseline_at: new Date().toISOString() }),
+  });
+};
+
+export const getVenueById = async (id: string): Promise<VenueRecord | null> => {
+  const rows = await supabaseRequest<VenueRecord[]>(
+    `/venues?select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
+  );
+  return rows[0] ?? null;
+};
+
+export const saveVenueTicketmasterRef = async (
+  venue: VenueRecord,
+  ticketmaster: VenueSuggestion,
+): Promise<void> => {
+  await supabaseRequest<void>(`/venues?id=eq.${encodeURIComponent(venue.id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      source_refs: { ...(venue.source_refs ?? {}), ticketmaster: ticketmaster.id },
+      latitude: venue.latitude ?? ticketmaster.latitude,
+      longitude: venue.longitude ?? ticketmaster.longitude,
+    }),
+  });
+};
+
+const findOrCreateVenue = async (input: {
+  name: string;
+  city: string | null;
+  state: string | null;
+  country: string;
+  ticketmaster?: VenueSuggestion;
+}): Promise<string> => {
+  const tm = input.ticketmaster;
+  const lookup = tm
+    ? `/venues?select=id&source_refs->>ticketmaster=eq.${encodeURIComponent(tm.id)}&limit=1`
+    : `/venues?select=id&normalized_name=eq.${encodeURIComponent(input.name.toLowerCase())}&city=eq.${encodeURIComponent(input.city ?? "")}&limit=1`;
+  const existing = await supabaseRequest<Array<{ id: string }>>(lookup);
+  if (existing[0]) return existing[0].id;
+
+  const name = tm?.name ?? input.name;
+  const venue = await supabaseRequest<{ id: string }>(
+    "/venues?select=id",
+    {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        name,
+        normalized_name: name.trim().toLowerCase(),
+        city: tm?.city ?? input.city,
+        state: tm?.state ?? input.state,
+        country: tm?.country ?? input.country,
+        latitude: tm?.latitude ?? null,
+        longitude: tm?.longitude ?? null,
+        source_refs: tm ? { ticketmaster: tm.id } : {},
+      }),
+    },
+    true,
+  );
+  return venue.id;
+};
+
+const SOURCE_ID_CHUNK = 100;
+
+/** A user's stored events for these source ids, fetched in URL-sized chunks. */
+export const listEventsBySourceIds = async (
+  userId: string,
+  sourceSlug: string,
+  sourceEventIds: string[],
+): Promise<EventRecord[]> => {
+  const results: EventRecord[] = [];
+  for (let start = 0; start < sourceEventIds.length; start += SOURCE_ID_CHUNK) {
+    const chunk = sourceEventIds.slice(start, start + SOURCE_ID_CHUNK);
+    const list = `(${chunk.map((id) => `"${id.replace(/["\\]/g, "")}"`).join(",")})`;
+    const rows = await supabaseRequest<EventRecord[]>(
+      `/events?select=*&user_id=eq.${encodeURIComponent(userId)}&source_slug=eq.${encodeURIComponent(sourceSlug)}&source_event_id=in.${encodeURIComponent(list)}`,
+    );
+    results.push(...rows);
+  }
+  return results;
+};
+
+/** Save events found by a venue or area rule in one request. */
+export const upsertRuleEvents = async (
+  rows: Array<DiscoveredEvent & { user_id: string; watch_rule_id: string | null }>,
+): Promise<EventRecord[]> => {
+  if (rows.length === 0) return [];
+  const now = new Date().toISOString();
+  return supabaseRequest<EventRecord[]>(
+    "/events?select=*&on_conflict=user_id,source_slug,source_event_id",
+    {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      // watch_artist_id is left out so an artist watch's claim on a row survives.
+      body: JSON.stringify(
+        rows.map((row) => ({
+          user_id: row.user_id,
+          source_slug: row.source_slug,
+          source_event_id: row.source_event_id,
+          watch_rule_id: row.watch_rule_id,
+          artist_name: row.artist_name,
+          title: row.title,
+          venue: row.venue,
+          city: row.city,
+          state: row.state,
+          country: row.country,
+          start_time: row.start_time,
+          ticket_url: row.ticket_url,
+          status: row.status,
+          on_sale_start: row.on_sale_start,
+          sale_windows: row.sale_windows ?? [],
+          dedupe_key: row.dedupe_key,
+          last_seen_at: now,
+        })),
+      ),
+    },
+  );
+};
+
+export const createSnapshots = async (
+  rows: Array<{ eventId: string; rawJsonHash: string; rawJson: unknown }>,
+): Promise<void> => {
+  if (rows.length === 0) return;
+  await supabaseRequest<void>("/snapshots", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(
+      rows.map((row) => ({ event_id: row.eventId, raw_json_hash: row.rawJsonHash, raw_json: row.rawJson })),
+    ),
   });
 };
 
