@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import type { EventStatus, NormalizedEvent } from "./types";
 
-const SOURCE_PRIORITY: Record<NormalizedEvent["source_slug"], number> = {
+/** Which source's copy of a show wins when two sources list it. Higher wins. */
+export const SOURCE_PRIORITY: Record<NormalizedEvent["source_slug"], number> = {
   ticketmaster: 3,
   eventbrite: 2,
   songkick: 2,
@@ -11,13 +12,16 @@ const SOURCE_PRIORITY: Record<NormalizedEvent["source_slug"], number> = {
   manual: 1,
 };
 
+/** Lowercase and strip accents, so "Beyoncé" and "Beyonce" compare equal. */
+export const foldText = (value: string): string =>
+  value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 export const slugify = (value: string | null | undefined): string => {
   if (!value) {
     return "unknown";
   }
 
-  return value
-    .toLowerCase()
+  return foldText(value)
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 120);
@@ -36,8 +40,23 @@ export const asIsoOrNull = (value: string | null | undefined): string | null => 
   return date.toISOString();
 };
 
-export const buildDedupeKey = (artistName: string, venue: string | null, startTime: string | null): string => {
-  const day = startTime ? startTime.slice(0, 10) : "unknown-day";
+const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}/;
+
+/**
+ * `artist::venue::day`. The day is the show's local calendar date when the
+ * source gives one (Ticketmaster `localDate`, Songkick `start.date`,
+ * Bandsintown's floating `datetime`), so an evening show in the Americas
+ * gets the same day from every source instead of the next UTC day. Without
+ * a local date it falls back to the UTC day of `startTime`.
+ */
+export const buildDedupeKey = (
+  artistName: string,
+  venue: string | null,
+  startTime: string | null,
+  localDate?: string | null,
+): string => {
+  const local = localDate?.trim().match(LOCAL_DATE)?.[0];
+  const day = local ?? (startTime ? startTime.slice(0, 10) : "unknown-day");
   return `${slugify(artistName)}::${slugify(venue)}::${day}`;
 };
 

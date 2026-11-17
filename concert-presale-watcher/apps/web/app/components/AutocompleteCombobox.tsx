@@ -40,6 +40,8 @@ interface AutocompleteComboboxProps {
   statusMessage?: string | null;
   onValueChange: (value: string) => void;
   onSelect: (option: ComboboxOption) => void;
+  /** Called when the typed text should be taken as final: on blur, or Enter with no option active. */
+  onCommit?: () => void;
   renderMeta?: (option: ComboboxOption) => ReactNode;
 }
 
@@ -95,6 +97,7 @@ export default function AutocompleteCombobox({
   statusMessage = null,
   onValueChange,
   onSelect,
+  onCommit,
   renderMeta,
 }: AutocompleteComboboxProps) {
   const generatedId = useId();
@@ -164,6 +167,11 @@ export default function AutocompleteCombobox({
       return;
     }
 
+    if (event.key === "Enter") {
+      onCommit?.();
+      return;
+    }
+
     if (event.key === "Escape" && showListbox) {
       // Close the list without letting the surrounding sheet close too.
       event.preventDefault();
@@ -207,6 +215,7 @@ export default function AutocompleteCombobox({
             setActiveIndex(-1);
           }}
           onKeyDown={handleKeyDown}
+          onBlur={onCommit}
         />
 
         {showListbox ? (

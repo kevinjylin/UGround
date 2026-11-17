@@ -4,6 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 import { relativeTime } from "../../lib/format";
+import {
+  FEED_PAGE_SIZE,
+  defaultFeedQuery,
+  emptyFeedCounts,
+  feedSearchParams,
+  formatFeedSource,
+  parseFeedSource,
+  type FeedCounts,
+  type FeedQuery,
+  type FeedView,
+  type UserState,
+} from "../../lib/feedQuery";
 import type {
   AlertRecord,
   ArtistSuggestion,
@@ -17,17 +29,18 @@ import type {
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import ErrorBanner from "../components/ErrorBanner";
-import EventList from "../components/EventList";
+import EventList, { FeedNotice, type FeedNoticeState } from "../components/EventList";
 import FeedToolbar, {
   type EventFilter,
   type EventSort,
 } from "../components/FeedToolbar";
 import OnSaleHero from "../components/OnSaleHero";
 import SettingsDrawer from "../components/SettingsDrawer";
+import { useHomeLocation, useSpotifyReturn } from "../components/useHomeLocation";
+import { type LocationValue, locationRequestFields } from "@/lib/locations";
 import AppSidebar from "../components/Sidebar";
 import TopBar from "../components/TopBar";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 type SettingsTab = "watchlist" | "notifications" | "account";
 
 const toTimestamp = (value: string | null | undefined): number => {
@@ -37,32 +50,48 @@ const toTimestamp = (value: string | null | undefined): number => {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 };
 
-const latestActivityTime = (
-  event: EventRecord,
-  alertsByEventId: Map<string, AlertRecord[]>,
-): number => {
-  const latestAlertTime = toTimestamp(
-    alertsByEventId.get(event.id)?.[0]?.created_at,
-  );
+interface FeedResponse {
+  events?: EventRecord[];
+  alerts?: AlertRecord[];
+  hasMore?: boolean;
+  counts?: FeedCounts;
+  error?: string;
+}
 
-  // last_seen_at moves on every check, so it says nothing about change.
-  return Math.max(
-    latestAlertTime,
-    toTimestamp(event.updated_at),
-    toTimestamp(event.created_at),
-  );
+const HERO_SIZE = 6;
+const SEARCH_DEBOUNCE_MS = 250;
+
+/** Fetches one page of the feed. Paging, sort, search and counts all run on the server. */
+const fetchFeedPage = async (
+  query: FeedQuery,
+  page: { limit: number; offset?: number; counts?: boolean },
+): Promise<FeedResponse> => {
+  const response = await fetch(`/api/events?${feedSearchParams(query, page).toString()}`, {
+    cache: "no-store",
+  });
+  const body = (await response.json()) as FeedResponse;
+  if (!response.ok || body.error) throw new Error(body.error ?? "Could not load shows");
+  return body;
 };
 
-const changedWithinDay = (
-  event: EventRecord,
-  alertsByEventId: Map<string, AlertRecord[]>,
-): boolean => {
-  const latestAlertAt = toTimestamp(
-    alertsByEventId.get(event.id)?.[0]?.created_at,
-  );
-
-  return latestAlertAt > 0 && Date.now() - latestAlertAt <= DAY_MS;
+const patchUserState = async (
+  eventId: string,
+  state: UserState | null,
+): Promise<EventRecord> => {
+  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state }),
+  });
+  const body = (await response.json()) as { event?: EventRecord; error?: string };
+  if (!response.ok || body.error || !body.event) {
+    throw new Error(body.error ?? "Could not update the show");
+  }
+  return body.event;
 };
+
+const showName = (event: EventRecord): string =>
+  event.venue ? `${event.artist_name} at ${event.venue}` : event.artist_name;
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -73,11 +102,19 @@ export default function DashboardPage() {
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettingsResponse | null>(null);
 
-  const [city, setCity] = useState("");
-  const [stateRegion, setStateRegion] = useState("");
-  const [country, setCountry] = useState("US");
-  const [filter, setFilter] = useState<EventFilter>("all");
-  const [sort, setSort] = useState<EventSort>("recent_change");
+  // Saved per user; the default location for new artists and imports.
+  const { home, saveHome } = useHomeLocation();
+  const city = home.city;
+  const [feedQuery, setFeedQuery] = useState<FeedQuery>(defaultFeedQuery);
+  const [searchInput, setSearchInput] = useState("");
+  const [feedCounts, setFeedCounts] = useState<FeedCounts>(emptyFeedCounts);
+  const [countsReady, setCountsReady] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [heroEvents, setHeroEvents] = useState<EventRecord[]>([]);
+  const [notice, setNotice] = useState<FeedNoticeState | null>(null);
+  const feedRequestId = useRef(0);
   const [settingsOpen, setSettingsOpen] = useState<false | SettingsTab>(false);
   const [refreshQueued, setRefreshQueued] = useState(false);
 
@@ -94,33 +131,98 @@ export default function DashboardPage() {
   const openSettings = useCallback((tab: SettingsTab) => {
     setSettingsOpen(tab);
   }, []);
+  // Back from "Connect Spotify": open the watchlist, where the import continues.
+  useSpotifyReturn(useCallback(() => setSettingsOpen("watchlist"), []));
+
+  const mergeAlerts = useCallback((incoming: AlertRecord[] | undefined) => {
+    if (!incoming || incoming.length === 0) return;
+    setAlerts((current) => {
+      const byId = new Map(current.map((alert) => [alert.id, alert]));
+      for (const alert of incoming) byId.set(alert.id, alert);
+      return [...byId.values()];
+    });
+  }, []);
+
+  /** Loads the first page for a query (with counts), or the next page when offset is set. */
+  const loadFeed = useCallback(
+    async (query: FeedQuery, offset = 0) => {
+      const requestId = ++feedRequestId.current;
+      const append = offset > 0;
+      if (append) setLoadingMore(true);
+      else setFeedLoading(true);
+      try {
+        const body = await fetchFeedPage(query, {
+          limit: FEED_PAGE_SIZE,
+          offset,
+          counts: !append,
+        });
+        if (requestId !== feedRequestId.current) return;
+        const page = body.events ?? [];
+        setEvents((current) => {
+          if (!append) return page;
+          const seen = new Set(current.map((event) => event.id));
+          return [...current, ...page.filter((event) => !seen.has(event.id))];
+        });
+        mergeAlerts(body.alerts);
+        setHasMore(Boolean(body.hasMore));
+        if (body.counts) {
+          setFeedCounts(body.counts);
+          setCountsReady(true);
+        }
+      } catch (caught) {
+        if (requestId === feedRequestId.current) setError((caught as Error).message);
+      } finally {
+        if (requestId === feedRequestId.current) {
+          setFeedLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    },
+    [mergeAlerts],
+  );
+
+  /** Counts only, after a show changes state. Doesn't touch the loaded page. */
+  const refreshCounts = async () => {
+    try {
+      const body = await fetchFeedPage(feedQuery, { limit: 1, counts: true });
+      if (body.counts) setFeedCounts(body.counts);
+    } catch {
+      // The next full load corrects the counts.
+    }
+  };
+
+  const loadHero = async () => {
+    try {
+      const body = await fetchFeedPage(
+        { ...defaultFeedQuery, filter: "onsale" },
+        { limit: HERO_SIZE },
+      );
+      setHeroEvents(body.events ?? []);
+      mergeAlerts(body.alerts);
+    } catch {
+      setHeroEvents([]);
+    }
+  };
 
   const refreshAll = async (isInitialLoad = false) => {
     setBusy(true);
     setError(null);
+    // The first page loads from the feed-query effect on mount.
+    if (!isInitialLoad) void loadFeed(feedQuery);
+    void loadHero();
     try {
-      const [watchlistRes, watchRulesRes, eventsRes, alertsRes, notificationSettingsRes] =
+      const [watchlistRes, watchRulesRes, notificationSettingsRes] =
         await Promise.all([
           fetch("/api/watchlist", { cache: "no-store" }),
           fetch("/api/watch-rules", { cache: "no-store" }),
-          fetch("/api/events?limit=200", { cache: "no-store" }),
-          fetch("/api/alerts?limit=60", { cache: "no-store" }),
           fetch("/api/notification-settings", { cache: "no-store" }),
         ]);
       const watchlistJson = (await watchlistRes.json()) as {
         artists?: WatchArtist[];
         error?: string;
       };
-      const eventsJson = (await eventsRes.json()) as {
-        events?: EventRecord[];
-        error?: string;
-      };
       const watchRulesJson = (await watchRulesRes.json()) as {
         rules?: WatchRule[];
-        error?: string;
-      };
-      const alertsJson = (await alertsRes.json()) as {
-        alerts?: AlertRecord[];
         error?: string;
       };
       const notificationSettingsJson =
@@ -132,25 +234,18 @@ export default function DashboardPage() {
       if (
         watchlistJson.error ||
         watchRulesJson.error ||
-        eventsJson.error ||
-        alertsJson.error ||
         notificationSettingsJson.error
       ) {
         throw new Error(
             watchlistJson.error ??
             watchRulesJson.error ??
-            eventsJson.error ??
-            alertsJson.error ??
             notificationSettingsJson.error,
         );
       }
       const fetchedArtists = watchlistJson.artists ?? [];
-      const fetchedEvents = eventsJson.events ?? [];
 
       setArtists(fetchedArtists);
       setWatchRules(watchRulesJson.rules ?? []);
-      setEvents(fetchedEvents);
-      setAlerts(alertsJson.alerts ?? []);
       setNotificationSettings(notificationSettingsJson.settings ?? null);
       void fetch("/api/source-status", { cache: "no-store" })
         .then((response) => response.json())
@@ -174,7 +269,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void refreshAll(true);
+    // Runs once on mount; later refreshes are explicit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Every change to the query reloads the first page and the counts.
+  useEffect(() => {
+    void loadFeed(feedQuery);
+  }, [feedQuery, loadFeed]);
+
+  // Search waits for a pause in typing.
+  useEffect(() => {
+    const q = searchInput.trim();
+    const timer = window.setTimeout(() => {
+      setFeedQuery((current) => (current.q === q ? current : { ...current, q }));
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
 
   useEffect(() => {
     try {
@@ -217,99 +328,133 @@ export default function DashboardPage() {
     return grouped;
   }, [alerts]);
 
-  const filterCounts = useMemo(() => {
-    let onsale = 0;
-    let scheduled = 0;
-    let changedToday = 0;
-
-    for (const event of events) {
-      if (event.status === "onsale") onsale += 1;
-      if (event.status === "scheduled") scheduled += 1;
-      if (changedWithinDay(event, alertsByEventId)) changedToday += 1;
-    }
-
-    return {
-      all: events.length,
-      onsale,
-      scheduled,
-      changed_today: changedToday,
-    };
-  }, [alertsByEventId, events]);
-
   const filters = useMemo(
     () => [
-      { id: "all" as const, label: "All", count: filterCounts.all },
-      {
-        id: "onsale" as const,
-        label: "On sale",
-        count: filterCounts.onsale,
-      },
-      {
-        id: "changed_today" as const,
-        label: "Changed today",
-        count: filterCounts.changed_today,
-      },
-      {
-        id: "scheduled" as const,
-        label: "Upcoming",
-        count: filterCounts.scheduled,
-      },
+      { id: "all" as const, label: "All", count: feedCounts.all },
+      { id: "onsale" as const, label: "On sale", count: feedCounts.onsale },
+      { id: "changed_today" as const, label: "Changed today", count: feedCounts.changed_today },
+      { id: "scheduled" as const, label: "Scheduled", count: feedCounts.scheduled },
+      { id: "saved" as const, label: "Saved", count: feedCounts.saved },
     ],
-    [filterCounts],
+    [feedCounts],
   );
 
-  const filteredSortedEvents = useMemo(() => {
-    const filtered = events.filter((event) => {
-      if (filter === "all") return true;
-      if (filter === "changed_today") {
-        return changedWithinDay(event, alertsByEventId);
+  const setFilter = (filter: EventFilter) =>
+    setFeedQuery((current) => (current.filter === filter ? current : { ...current, filter }));
+  const setSort = (sort: EventSort) =>
+    setFeedQuery((current) => (current.sort === sort ? current : { ...current, sort }));
+  const setView = (view: FeedView) =>
+    setFeedQuery((current) => (current.view === view ? current : { ...current, view }));
+  const setSource = (value: string) =>
+    setFeedQuery((current) => ({ ...current, source: parseFeedSource(value || null) }));
+  const clearFeedFilters = () => {
+    setSearchInput("");
+    setFeedQuery((current) => ({ ...current, filter: "all", q: "", source: null }));
+  };
+  const showAllOnSale = () => {
+    setSearchInput("");
+    setFeedQuery((current) => ({ ...defaultFeedQuery, sort: current.sort, filter: "onsale" }));
+  };
+
+  const feedFiltered =
+    feedQuery.q !== "" || feedQuery.source !== null || feedQuery.filter !== "all";
+  const hasAnyEvents =
+    feedCounts.upcoming_total > 0 || feedCounts.past > 0 || feedCounts.hidden > 0;
+
+  const replaceEvent = (updated: EventRecord) => {
+    const swap = (list: EventRecord[]) =>
+      list.map((event) => (event.id === updated.id ? updated : event));
+    setEvents(swap);
+    setHeroEvents(swap);
+  };
+
+  /**
+   * Marks a show interested, going or hidden (or clears it). A show that
+   * leaves the current view goes at once, with an undo that puts it back in
+   * the same place.
+   */
+  const updateUserState = async (event: EventRecord, state: UserState | null) => {
+    const previous = event.user_state ?? null;
+    if (previous === state) return;
+    const leavesView = (feedQuery.view === "hidden") !== (state === "hidden");
+    const index = events.findIndex((item) => item.id === event.id);
+    const optimistic = { ...event, user_state: state };
+
+    setError(null);
+    if (leavesView) {
+      setEvents((current) => current.filter((item) => item.id !== event.id));
+    } else {
+      replaceEvent(optimistic);
+    }
+    if (state === "hidden") {
+      setHeroEvents((current) => current.filter((item) => item.id !== event.id));
+    }
+
+    try {
+      const saved = await patchUserState(event.id, state);
+      if (!leavesView) replaceEvent(saved);
+      if (leavesView) {
+        setNotice({
+          message:
+            state === "hidden"
+              ? `Hid ${showName(event)}.`
+              : `${showName(event)} is back in your feed.`,
+          undo: () => void undoUserState(saved, previous, index),
+        });
       }
-      return event.status === filter;
-    });
+      if (previous === "hidden" || state === "hidden") void loadHero();
+      void refreshCounts();
+    } catch (caught) {
+      if (leavesView) {
+        setEvents((current) =>
+          current.some((item) => item.id === event.id)
+            ? current
+            : [...current.slice(0, Math.max(index, 0)), event, ...current.slice(Math.max(index, 0))],
+        );
+      } else {
+        replaceEvent(event);
+      }
+      setError((caught as Error).message);
+    }
+  };
 
-    return [...filtered].sort((a, b) => {
-      if (sort === "date_soonest") {
-        const aTime = a.start_time
-          ? toTimestamp(a.start_time)
-          : Number.POSITIVE_INFINITY;
-        const bTime = b.start_time
-          ? toTimestamp(b.start_time)
-          : Number.POSITIVE_INFINITY;
-        if (aTime !== bTime) return aTime - bTime;
-
-        return (
-          a.artist_name.localeCompare(b.artist_name) ||
-          a.title.localeCompare(b.title)
+  const undoUserState = async (
+    event: EventRecord,
+    previous: UserState | null,
+    index: number,
+  ) => {
+    setNotice(null);
+    setError(null);
+    try {
+      const restored = await patchUserState(event.id, previous);
+      const belongsHere = (feedQuery.view === "hidden") === (previous === "hidden");
+      if (belongsHere) {
+        setEvents((current) =>
+          current.some((item) => item.id === restored.id)
+            ? current
+            : [...current.slice(0, Math.max(index, 0)), restored, ...current.slice(Math.max(index, 0))],
         );
       }
+      void loadHero();
+      void refreshCounts();
+    } catch (caught) {
+      setError((caught as Error).message);
+    }
+  };
 
-      if (sort === "artist_az") {
-        return (
-          a.artist_name.localeCompare(b.artist_name) ||
-          a.title.localeCompare(b.title)
-        );
-      }
-
-      return (
-        latestActivityTime(b, alertsByEventId) -
-          latestActivityTime(a, alertsByEventId) ||
-        a.artist_name.localeCompare(b.artist_name)
-      );
-    });
-  }, [alertsByEventId, events, filter, sort]);
-
-  const onSaleEvents = useMemo(
+  const venueSources = useMemo(
     () =>
-      events
-        .filter((event) => event.status === "onsale")
-        .sort(
-          (a, b) =>
-            latestActivityTime(b, alertsByEventId) -
-              latestActivityTime(a, alertsByEventId) ||
-            a.artist_name.localeCompare(b.artist_name),
-        )
-        .slice(0, 6),
-    [alertsByEventId, events],
+      watchRules
+        .filter((rule) => rule.kind === "venue")
+        .map((rule) => ({ value: formatFeedSource({ kind: "rule", id: rule.id })!, label: rule.label })),
+    [watchRules],
+  );
+  const areaSources = useMemo(
+    () =>
+      watchRules
+        .filter((rule) => rule.kind === "location")
+        .map((rule) => ({ value: formatFeedSource({ kind: "rule", id: rule.id })!, label: rule.label })),
+    [watchRules],
   );
 
   // Last time a source actually checked in. A queued refresh is not a check.
@@ -371,7 +516,7 @@ export default function DashboardPage() {
         ? ("healthy" as const)
         : ("degraded" as const);
 
-  const addArtist = async (name: string, spotifyId?: string) => {
+  const addArtist = async (name: string, spotifyId: string | undefined, location: LocationValue = home) => {
     setError(null);
     const res = await fetch("/api/watchlist", {
       method: "POST",
@@ -379,9 +524,7 @@ export default function DashboardPage() {
       body: JSON.stringify({
         name,
         spotifyId,
-        city: city || undefined,
-        state: stateRegion || undefined,
-        country: country || "US",
+        ...locationRequestFields(location),
       }),
     });
     const json = (await res.json()) as { error?: string };
@@ -396,6 +539,17 @@ export default function DashboardPage() {
     const json = (await res.json()) as { error?: string };
     if (!res.ok || json.error)
       throw new Error(json.error ?? "Failed to remove artist");
+    await refreshAll();
+  };
+
+  const updateArtistLocation = async (id: string, location: LocationValue) => {
+    const res = await fetch(`/api/watchlist/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(locationRequestFields(location)),
+    });
+    const json = (await res.json()) as { error?: string };
+    if (!res.ok || json.error) throw new Error(json.error ?? "Couldn't change the location");
     await refreshAll();
   };
 
@@ -417,16 +571,14 @@ export default function DashboardPage() {
     await refreshAll();
   };
 
-  const importFromSpotify = async (ids: string) => {
+  const importFromSpotify = async (ids: string, location: LocationValue = home) => {
     setError(null);
     const res = await fetch("/api/watchlist/import-spotify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         artistIds: ids,
-        city: city || undefined,
-        state: stateRegion || undefined,
-        country: country || "US",
+        ...locationRequestFields(location),
       }),
     });
     const json = (await res.json()) as { error?: string };
@@ -449,6 +601,7 @@ export default function DashboardPage() {
   const importSpotifyPlaylist = async (
     playlistUrl: string,
     selectedArtistIds: string[],
+    location: LocationValue = home,
   ) => {
     const res = await fetch("/api/integrations/spotify/import", {
       method: "POST",
@@ -456,13 +609,26 @@ export default function DashboardPage() {
       body: JSON.stringify({
         playlistUrl,
         selectedArtistIds,
-        city: city || undefined,
-        state: stateRegion || undefined,
-        country: country || "US",
+        ...locationRequestFields(location),
       }),
     });
     const json = (await res.json()) as { error?: string };
     if (!res.ok || json.error) throw new Error(json.error ?? "Spotify playlist import failed");
+    await refreshAll();
+  };
+
+  const importSpotifyAccount = async (selectedArtistIds: string[], location: LocationValue = home) => {
+    const res = await fetch("/api/integrations/spotify/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        account: true,
+        selectedArtistIds,
+        ...locationRequestFields(location),
+      }),
+    });
+    const json = (await res.json()) as { error?: string };
+    if (!res.ok || json.error) throw new Error(json.error ?? "Spotify import failed");
     await refreshAll();
   };
 
@@ -564,7 +730,7 @@ export default function DashboardPage() {
     router.refresh();
   };
 
-  const upcomingCount = filterCounts.all;
+  const upcomingCount = feedCounts.upcoming_total;
 
   return (
     <SidebarProvider>
@@ -596,9 +762,9 @@ export default function DashboardPage() {
         <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 pt-8 pb-16 sm:px-6 lg:px-8 [&>*]:min-w-0">
           <div>
             <h1 className="font-display text-[44px] leading-[1.05]">Your shows</h1>
-            {followingSummary && !(busy && events.length === 0) ? (
+            {followingSummary && countsReady ? (
               <p className="mt-2 text-sm text-muted-foreground">
-                <span className="tabular">{upcomingCount}</span>{" "}
+                <span className="tabular">{upcomingCount}</span> upcoming{" "}
                 {upcomingCount === 1 ? "show" : "shows"} from {followingSummary}
               </p>
             ) : null}
@@ -607,30 +773,56 @@ export default function DashboardPage() {
           {error ? <ErrorBanner message={error} /> : null}
 
           <OnSaleHero
-            events={onSaleEvents}
+            events={heroEvents}
             alertsByEventId={alertsByEventId}
-            totalCount={filterCounts.onsale}
-            onShowAll={() => setFilter("onsale")}
+            totalCount={feedCounts.onsale_total}
+            onShowAll={showAllOnSale}
           />
 
           <Tabs
-            value={filter}
+            value={feedQuery.filter}
             onValueChange={(value) => setFilter(value as EventFilter)}
             className="min-w-0 gap-4"
           >
-            {events.length > 0 || busy ? (
-              <FeedToolbar sort={sort} filters={filters} onSortChange={setSort} />
+            {hasAnyEvents || busy || feedLoading || feedFiltered || feedQuery.view !== "upcoming" ? (
+              <FeedToolbar
+                sort={feedQuery.sort}
+                filters={filters}
+                onSortChange={setSort}
+                search={searchInput}
+                onSearchChange={setSearchInput}
+                source={formatFeedSource(feedQuery.source) ?? ""}
+                venueSources={venueSources}
+                areaSources={areaSources}
+                hasArtistSource={artists.length > 0}
+                onSourceChange={setSource}
+                view={feedQuery.view}
+                viewCounts={{
+                  upcoming: feedCounts.upcoming,
+                  past: feedCounts.past,
+                  hidden: feedCounts.hidden,
+                }}
+                onViewChange={setView}
+              />
             ) : null}
-            <TabsContent value={filter} className="mt-0">
+            <FeedNotice notice={notice} onDismiss={() => setNotice(null)} />
+            <TabsContent value={feedQuery.filter} className="mt-0">
               <EventList
-                events={filteredSortedEvents}
+                events={events}
                 alertsByEventId={alertsByEventId}
                 ruleLabelById={ruleLabelById}
-                totalEvents={events.length}
-                loading={busy && events.length === 0}
+                hasAnyEvents={hasAnyEvents}
+                matchingCount={feedCounts[feedQuery.filter]}
+                view={feedQuery.view}
+                filtered={feedFiltered}
+                loading={(feedLoading || busy) && events.length === 0}
                 hasArtists={artists.length > 0 || ruleLabelById.size > 0}
+                hasMore={hasMore}
+                loadingMore={loadingMore}
+                onLoadMore={() => void loadFeed(feedQuery, events.length)}
+                onSetUserState={(event, state) => void updateUserState(event, state)}
                 onOpenWatchlist={() => openSettings("watchlist")}
-                onClearFilter={() => setFilter("all")}
+                onClearFilter={clearFeedFilters}
               />
             </TabsContent>
           </Tabs>
@@ -643,23 +835,21 @@ export default function DashboardPage() {
         artists={artists}
         watchRules={watchRules}
         busy={busy}
-        city={city}
-        stateRegion={stateRegion}
-        country={country}
+        home={home}
         notificationSettings={notificationSettings}
         polling={polling}
         lastPoll={lastPoll}
         onClose={closeSettings}
-        onCityChange={setCity}
-        onStateChange={setStateRegion}
-        onCountryChange={setCountry}
+        onSaveHome={saveHome}
         onAddArtist={addArtist}
         onRemoveArtist={removeArtist}
+        onUpdateArtistLocation={updateArtistLocation}
         onAddWatchRule={addWatchRule}
         onRemoveWatchRule={removeWatchRule}
         onImportSpotify={importFromSpotify}
         onPreviewSpotifyPlaylist={previewSpotifyPlaylist}
         onImportSpotifyPlaylist={importSpotifyPlaylist}
+        onImportSpotifyAccount={importSpotifyAccount}
         onPoll={runPoll}
         onSaveNotificationSettings={saveNotificationSettings}
         onTestDiscord={() =>

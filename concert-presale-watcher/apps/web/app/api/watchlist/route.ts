@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { internalErrorResponse } from "../../../lib/apiError";
 import { validationErrorResponse } from "../../../lib/apiValidation";
 import { getCurrentUserId } from "../../../lib/auth";
+import { runFirstArtistCheck } from "../../../lib/poller";
 import { normalizeState } from "../../../lib/state";
 import { createWatchArtist, listWatchArtists } from "../../../lib/supabase";
 import { enforceRateLimit, getRequestIp } from "../../../lib/rateLimit";
@@ -43,7 +44,10 @@ export async function POST(request: Request) {
       city: body.city?.trim() || undefined,
       state: normalizedState ?? undefined,
       country: normalizedCountry,
+      radiusMiles: body.radiusMiles,
     });
+    // Quiet first check so the feed fills now. Bounded; never fails the add.
+    await runFirstArtistCheck(artist);
 
     return NextResponse.json({ artist }, { status: 201 });
   } catch (error) {

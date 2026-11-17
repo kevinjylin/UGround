@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,17 +11,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { relativeTime } from "@/lib/format";
-import { searchConcertMarkets, US_CONCERT_MARKETS, US_STATE_SUGGESTIONS } from "@/lib/locations";
+import {
+  formatLocationValue,
+  type LocationValue,
+  RADIUS_OPTIONS,
+  searchConcertMarkets,
+  US_CONCERT_MARKETS,
+  US_STATE_SUGGESTIONS,
+} from "@/lib/locations";
+import type { SpotifyAccountArtist } from "@/lib/sources/spotify";
+import {
+  isSpotifyConnectResult,
+  SPOTIFY_RESULT_MESSAGES,
+  type SpotifyConnectResult,
+} from "@/lib/spotifyConnect";
 import type { ArtistSuggestion, LocationSuggestion, PollResult, VenueSuggestion } from "@/lib/types";
 import AutocompleteCombobox, { type ComboboxOption } from "./AutocompleteCombobox";
+import LocationField from "./LocationField";
 
-const formatLocation = (city: string, stateRegion: string, country: string): string => {
-  const parts = [city, stateRegion].map((part) => part.trim()).filter(Boolean);
-  if (parts.length > 0) {
-    return parts.join(", ");
-  }
+/** Most artists one import can add. */
+const IMPORT_LIMIT = 50;
 
-  return country.trim() && country.trim() !== "US" ? country.trim() : "";
+/** Reads `?spotify=<result>` left by the Spotify callback. Only runs in the browser. */
+const readSpotifyReturn = (): SpotifyConnectResult | null => {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location.search).get("spotify");
+  return isSpotifyConnectResult(value) ? value : null;
 };
 
 const artistToOption = (artist: ArtistSuggestion): ComboboxOption => ({
@@ -45,7 +60,7 @@ const venueToOption = (venue: VenueSuggestion): ComboboxOption => ({
   kind: "location",
 });
 
-const AREA_RADIUS_OPTIONS = ["10", "25", "50", "100"] as const;
+const AREA_RADIUS_OPTIONS = RADIUS_OPTIONS.map(String);
 
 const LOCATION_BY_ID = new Map<string, LocationSuggestion>(
   [...US_CONCERT_MARKETS, ...US_STATE_SUGGESTIONS].map((location) => [location.id, location]),
@@ -65,19 +80,80 @@ function SectionHeading({ title, description }: { title: string; description?: s
   );
 }
 
+function ArtistPickList({
+  label,
+  artists,
+  selected,
+  onToggle,
+  detail,
+  idPrefix,
+}: {
+  label: string;
+  artists: ArtistSuggestion[];
+  selected: string[];
+  onToggle: (artistId: string, checked: boolean) => void;
+  detail?: (artist: ArtistSuggestion) => string | null;
+  idPrefix: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[13px] text-muted-foreground">Artists to follow</span>
+        <span className="font-mono text-xs text-faint tabular">
+          {selected.length} of {artists.length}
+        </span>
+      </div>
+      <div role="group" aria-label={label} className="max-h-60 divide-y overflow-y-auto rounded-lg border">
+        {artists.map((artist) => {
+          const checkboxId = `${idPrefix}-${artist.id}`;
+          const note = detail?.(artist);
+          return (
+            <label
+              key={artist.id}
+              htmlFor={checkboxId}
+              className="flex h-9 cursor-pointer items-center gap-3 px-3 text-sm transition-colors hover:bg-accent/60"
+            >
+              <Checkbox
+                id={checkboxId}
+                checked={selected.includes(artist.id)}
+                onCheckedChange={(checked) => onToggle(artist.id, checked === true)}
+              />
+              <span className="min-w-0 flex-1 truncate">{artist.name}</span>
+              {note ? <span className="shrink-0 text-xs text-muted-foreground">{note}</span> : null}
+            </label>
+          );
+        })}
+      </div>
+      {selected.length > IMPORT_LIMIT ? (
+        <p className="text-[13px] leading-5 text-muted-foreground">
+          Pick up to {IMPORT_LIMIT} at a time.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const importLabel = (count: number): string => `Import ${count} ${count === 1 ? "artist" : "artists"}`;
+
+const accountDetail = (artist: ArtistSuggestion): string | null => {
+  const { followed, top } = artist as SpotifyAccountArtist;
+  if (followed && top) return "Followed, top artist";
+  if (followed) return "Followed";
+  if (top) return "Top artist";
+  return null;
+};
+
 interface WatchlistPanelProps {
   busy: boolean;
-  city: string;
-  stateRegion: string;
-  country: string;
-  onCityChange: (v: string) => void;
-  onStateChange: (v: string) => void;
-  onCountryChange: (v: string) => void;
-  onAdd: (name: string, spotifyId?: string) => Promise<void>;
+  /** Saved home location: the default for new artists and imports. */
+  home: LocationValue;
+  onSaveHome: (next: LocationValue) => Promise<void>;
+  onAdd: (name: string, spotifyId: string | undefined, location: LocationValue) => Promise<void>;
   onAddWatchRule: (input: Record<string, unknown>) => Promise<void>;
-  onImportSpotify: (ids: string) => Promise<void>;
+  onImportSpotify: (ids: string, location: LocationValue) => Promise<void>;
   onPreviewSpotifyPlaylist: (url: string) => Promise<ArtistSuggestion[]>;
-  onImportSpotifyPlaylist: (url: string, artistIds: string[]) => Promise<void>;
+  onImportSpotifyPlaylist: (url: string, artistIds: string[], location: LocationValue) => Promise<void>;
+  onImportSpotifyAccount: (artistIds: string[], location: LocationValue) => Promise<void>;
   onPoll: () => Promise<void>;
   polling: boolean;
   lastPoll: PollResult | null;
@@ -85,17 +161,14 @@ interface WatchlistPanelProps {
 
 export default function WatchlistPanel({
   busy,
-  city,
-  stateRegion,
-  country,
-  onCityChange,
-  onStateChange,
-  onCountryChange,
+  home,
+  onSaveHome,
   onAdd,
   onAddWatchRule,
   onImportSpotify,
   onPreviewSpotifyPlaylist,
   onImportSpotifyPlaylist,
+  onImportSpotifyAccount,
   onPoll,
   polling,
   lastPoll,
@@ -105,13 +178,27 @@ export default function WatchlistPanel({
   const [artistSuggestions, setArtistSuggestions] = useState<ArtistSuggestion[]>([]);
   const [artistSearchLoading, setArtistSearchLoading] = useState(false);
   const [artistSearchError, setArtistSearchError] = useState<string | null>(null);
-  const [locationInput, setLocationInput] = useState(() =>
-    formatLocation(city, stateRegion, country),
-  );
+  const [homeError, setHomeError] = useState<string | null>(null);
+  // The latest location, readable before React re-renders (e.g. Enter in the field submits the form).
+  const homeRef = useRef(home);
   const [spotifyIds, setSpotifyIds] = useState("");
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [playlistArtists, setPlaylistArtists] = useState<ArtistSuggestion[]>([]);
   const [selectedPlaylistArtists, setSelectedPlaylistArtists] = useState<string[]>([]);
+  const [playlistBusy, setPlaylistBusy] = useState(false);
+  const [playlistError, setPlaylistError] = useState<string | null>(null);
+  const [spotifyReturn] = useState(readSpotifyReturn);
+  const [moreOpen, setMoreOpen] = useState(spotifyReturn !== null);
+  const [accountArtists, setAccountArtists] = useState<SpotifyAccountArtist[]>([]);
+  const [selectedAccountArtists, setSelectedAccountArtists] = useState<string[]>([]);
+  const [accountLoading, setAccountLoading] = useState(spotifyReturn === "connected");
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountMessage, setAccountMessage] = useState<{ text: string; error: boolean } | null>(
+    () =>
+      spotifyReturn && spotifyReturn !== "connected"
+        ? { text: SPOTIFY_RESULT_MESSAGES[spotifyReturn], error: spotifyReturn !== "denied" }
+        : null,
+  );
   const [ruleKind, setRuleKind] = useState<"venue" | "location">("venue");
   const [venueInput, setVenueInput] = useState("");
   const [selectedVenue, setSelectedVenue] = useState<VenueSuggestion | null>(null);
@@ -126,10 +213,6 @@ export default function WatchlistPanel({
   const uid = useId();
 
   const artistOptions = useMemo(() => artistSuggestions.map(artistToOption), [artistSuggestions]);
-  const locationOptions = useMemo(
-    () => searchConcertMarkets(locationInput).map(locationToOption),
-    [locationInput],
-  );
   const venueOptions = useMemo(() => venueSuggestions.map(venueToOption), [venueSuggestions]);
   // Areas center on a known city, so states aren't offered here.
   const areaOptions = useMemo(
@@ -139,6 +222,45 @@ export default function WatchlistPanel({
         .map(locationToOption),
     [areaInput],
   );
+
+  useEffect(() => {
+    homeRef.current = home;
+  }, [home]);
+
+  // Back from Spotify: drop the result from the URL, and list the account's artists.
+  useEffect(() => {
+    if (!spotifyReturn) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("spotify");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    if (spotifyReturn !== "connected") return;
+
+    const controller = new AbortController();
+    void fetch("/api/integrations/spotify/account-artists", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const body = (await response.json()) as { artists?: SpotifyAccountArtist[]; error?: string };
+        if (!response.ok || body.error) throw new Error(body.error ?? SPOTIFY_RESULT_MESSAGES.error);
+        const artists = body.artists ?? [];
+        setAccountArtists(artists);
+        setSelectedAccountArtists(
+          artists.filter((artist) => artist.followed).slice(0, IMPORT_LIMIT).map((artist) => artist.id),
+        );
+        if (artists.length === 0) {
+          setAccountMessage({ text: "No followed or top artists on that Spotify account yet.", error: false });
+        }
+      })
+      .catch((error) => {
+        if ((error as Error).name === "AbortError") return;
+        setAccountMessage({ text: (error as Error).message, error: true });
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAccountLoading(false);
+      });
+    return () => controller.abort();
+  }, [spotifyReturn]);
 
   useEffect(() => {
     const query = venueInput.trim();
@@ -241,7 +363,7 @@ export default function WatchlistPanel({
       return;
     }
 
-    await onAdd(trimmedName, selectedArtist?.id);
+    await onAdd(trimmedName, selectedArtist?.id, homeRef.current);
     setArtistName("");
     setSelectedArtist(null);
     setArtistSuggestions([]);
@@ -249,21 +371,62 @@ export default function WatchlistPanel({
 
   const handleImport = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await onImportSpotify(spotifyIds);
+    await onImportSpotify(spotifyIds, homeRef.current);
     setSpotifyIds("");
   };
 
+  const handleHomeChange = (next: LocationValue) => {
+    homeRef.current = next;
+    setHomeError(null);
+    void onSaveHome(next).catch((error: Error) => setHomeError(error.message));
+  };
+
   const handlePlaylistPreview = async () => {
-    const artists = await onPreviewSpotifyPlaylist(playlistUrl);
-    setPlaylistArtists(artists);
-    setSelectedPlaylistArtists(artists.map((artist) => artist.id));
+    setPlaylistBusy(true);
+    setPlaylistError(null);
+    try {
+      const artists = await onPreviewSpotifyPlaylist(playlistUrl);
+      setPlaylistArtists(artists);
+      setSelectedPlaylistArtists(artists.slice(0, IMPORT_LIMIT).map((artist) => artist.id));
+    } catch (error) {
+      setPlaylistError((error as Error).message);
+    } finally {
+      setPlaylistBusy(false);
+    }
   };
 
   const handlePlaylistImport = async () => {
-    await onImportSpotifyPlaylist(playlistUrl, selectedPlaylistArtists);
-    setPlaylistUrl("");
-    setPlaylistArtists([]);
-    setSelectedPlaylistArtists([]);
+    setPlaylistBusy(true);
+    setPlaylistError(null);
+    try {
+      await onImportSpotifyPlaylist(playlistUrl, selectedPlaylistArtists, homeRef.current);
+      setPlaylistUrl("");
+      setPlaylistArtists([]);
+      setSelectedPlaylistArtists([]);
+    } catch (error) {
+      setPlaylistError((error as Error).message);
+    } finally {
+      setPlaylistBusy(false);
+    }
+  };
+
+  const handleAccountImport = async () => {
+    setAccountBusy(true);
+    setAccountMessage(null);
+    try {
+      const count = selectedAccountArtists.length;
+      await onImportSpotifyAccount(selectedAccountArtists, homeRef.current);
+      setAccountArtists([]);
+      setSelectedAccountArtists([]);
+      setAccountMessage({
+        text: `Imported ${count} ${count === 1 ? "artist" : "artists"}. The Spotify connection has been dropped.`,
+        error: false,
+      });
+    } catch (error) {
+      setAccountMessage({ text: (error as Error).message, error: true });
+    } finally {
+      setAccountBusy(false);
+    }
   };
 
   const handleArtistValueChange = (value: string) => {
@@ -354,37 +517,26 @@ export default function WatchlistPanel({
     setArtistSearchError(null);
   };
 
-  const handleLocationValueChange = (value: string) => {
-    setLocationInput(value);
-    onCityChange(value.trim());
-    onStateChange("");
-    onCountryChange("US");
-  };
-
-  const handleLocationSelect = (option: ComboboxOption) => {
-    const location = LOCATION_BY_ID.get(option.id);
-    if (!location) {
-      return;
-    }
-
-    setLocationInput(location.label);
-    onCityChange(location.city);
-    onStateChange(location.state);
-    onCountryChange(location.country);
-  };
-
   const togglePlaylistArtist = (artistId: string, checked: boolean) => {
     setSelectedPlaylistArtists((current) =>
       checked ? [...current, artistId] : current.filter((id) => id !== artistId),
     );
   };
 
+  const toggleAccountArtist = (artistId: string, checked: boolean) => {
+    setSelectedAccountArtists((current) =>
+      checked ? [...current, artistId] : current.filter((id) => id !== artistId),
+    );
+  };
+
+  const homeLabel = formatLocationValue(home);
+
   return (
     <div className="flex flex-col gap-6">
       <form className="flex flex-col gap-4" onSubmit={handleAddArtist}>
         <SectionHeading
           title="Follow an artist"
-          description="Search Spotify or type any name. Add a city to only hear about shows near it."
+          description="Search Spotify or type any name. Set a city to only hear about shows near it."
         />
         <AutocompleteCombobox
           id={`${uid}-artist`}
@@ -404,24 +556,31 @@ export default function WatchlistPanel({
           onValueChange={handleArtistValueChange}
           onSelect={handleArtistSelect}
         />
-        <AutocompleteCombobox
-          id={`${uid}-location`}
-          label="City or state (optional)"
-          value={locationInput}
-          placeholder="Anywhere"
-          disabled={busy}
-          options={locationOptions}
-          emptyMessage="No match. The city you typed will be used"
-          showEmptyMessage={Boolean(locationInput.trim())}
-          onValueChange={handleLocationValueChange}
-          onSelect={handleLocationSelect}
-        />
+        <div className="flex flex-col gap-2">
+          <LocationField
+            id={`${uid}-location`}
+            label="Your city or state (optional)"
+            value={home}
+            onChange={handleHomeChange}
+            disabled={busy}
+          />
+          {homeError ? (
+            <p role="alert" className="text-[13px] leading-5 text-destructive">
+              {homeError}
+            </p>
+          ) : (
+            <FieldDescription className="text-[13px]">
+              Saved to your account. New artists and imports use it; you can change it for one
+              artist under Following.
+            </FieldDescription>
+          )}
+        </div>
         <Button type="submit" disabled={busy} className="self-start">
           {busy ? "Adding…" : "Add to watchlist"}
         </Button>
       </form>
 
-      <Collapsible className="flex flex-col">
+      <Collapsible open={moreOpen} onOpenChange={setMoreOpen} className="flex flex-col">
         <CollapsibleTrigger asChild>
           <Button
             type="button"
@@ -555,6 +714,65 @@ export default function WatchlistPanel({
 
           <div className="flex flex-col gap-4">
             <SectionHeading
+              title="Import from your Spotify account"
+              description="Pick from artists you follow and your top artists. UGround keeps the access for 15 minutes at most, only to finish this import."
+            />
+            {accountLoading ? (
+              <p role="status" className="text-[13px] leading-5 text-muted-foreground">
+                Loading your Spotify artists…
+              </p>
+            ) : accountArtists.length === 0 ? (
+              <Button asChild variant="outline" className="self-start">
+                <a href="/api/integrations/spotify/start">Connect Spotify</a>
+              </Button>
+            ) : (
+              <>
+                <ArtistPickList
+                  label="Spotify account artists to import"
+                  artists={accountArtists}
+                  selected={selectedAccountArtists}
+                  onToggle={toggleAccountArtist}
+                  detail={accountDetail}
+                  idPrefix={`${uid}-account`}
+                />
+                <Button
+                  type="button"
+                  onClick={() => void handleAccountImport()}
+                  disabled={
+                    busy ||
+                    accountBusy ||
+                    selectedAccountArtists.length === 0 ||
+                    selectedAccountArtists.length > IMPORT_LIMIT
+                  }
+                  className="self-start"
+                >
+                  {accountBusy ? "Importing…" : importLabel(selectedAccountArtists.length)}
+                </Button>
+              </>
+            )}
+            {accountMessage ? (
+              <p
+                role={accountMessage.error ? "alert" : "status"}
+                className={
+                  accountMessage.error
+                    ? "text-[13px] leading-5 text-destructive"
+                    : "text-[13px] leading-5 text-muted-foreground"
+                }
+              >
+                {accountMessage.text}
+              </p>
+            ) : null}
+            {accountArtists.length > 0 ? (
+              <p className="text-[13px] leading-5 text-muted-foreground">
+                {homeLabel ? `Imported artists are watched near ${homeLabel}.` : "Imported artists are watched anywhere."}
+              </p>
+            ) : null}
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-col gap-4">
+            <SectionHeading
               title="Import a Spotify playlist"
               description="Paste a public playlist, then pick which of its artists to follow."
             />
@@ -571,56 +789,41 @@ export default function WatchlistPanel({
             <Button
               type="button"
               variant="outline"
-              onClick={handlePlaylistPreview}
-              disabled={busy || !playlistUrl.trim()}
+              onClick={() => void handlePlaylistPreview()}
+              disabled={busy || playlistBusy || !playlistUrl.trim()}
               className="self-start"
             >
               Preview artists
             </Button>
 
             {playlistArtists.length > 0 ? (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-[13px] text-muted-foreground">Artists to follow</span>
-                  <span className="font-mono text-xs text-faint tabular">
-                    {selectedPlaylistArtists.length} of {playlistArtists.length}
-                  </span>
-                </div>
-                <div
-                  role="group"
-                  aria-label="Artists to import"
-                  className="max-h-60 divide-y overflow-y-auto rounded-lg border"
-                >
-                  {playlistArtists.map((artist) => {
-                    const checkboxId = `${uid}-playlist-${artist.id}`;
-                    return (
-                      <label
-                        key={artist.id}
-                        htmlFor={checkboxId}
-                        className="flex h-9 cursor-pointer items-center gap-3 px-3 text-sm transition-colors hover:bg-accent/60"
-                      >
-                        <Checkbox
-                          id={checkboxId}
-                          checked={selectedPlaylistArtists.includes(artist.id)}
-                          onCheckedChange={(checked) =>
-                            togglePlaylistArtist(artist.id, checked === true)
-                          }
-                        />
-                        <span className="truncate">{artist.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+              <>
+                <ArtistPickList
+                  label="Playlist artists to import"
+                  artists={playlistArtists}
+                  selected={selectedPlaylistArtists}
+                  onToggle={togglePlaylistArtist}
+                  idPrefix={`${uid}-playlist`}
+                />
                 <Button
                   type="button"
-                  onClick={handlePlaylistImport}
-                  disabled={busy || selectedPlaylistArtists.length === 0}
+                  onClick={() => void handlePlaylistImport()}
+                  disabled={
+                    busy ||
+                    playlistBusy ||
+                    selectedPlaylistArtists.length === 0 ||
+                    selectedPlaylistArtists.length > IMPORT_LIMIT
+                  }
                   className="self-start"
                 >
-                  Import {selectedPlaylistArtists.length}{" "}
-                  {selectedPlaylistArtists.length === 1 ? "artist" : "artists"}
+                  {importLabel(selectedPlaylistArtists.length)}
                 </Button>
-              </div>
+              </>
+            ) : null}
+            {playlistError ? (
+              <p role="alert" className="text-[13px] leading-5 text-destructive">
+                {playlistError}
+              </p>
             ) : null}
           </div>
 

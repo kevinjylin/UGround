@@ -1,3 +1,4 @@
+import { findCrossSourceMatch, listCrossSourceCandidatesInWindow } from "./crossSourceDedupe";
 import { logger } from "./logger";
 import { getAlertTypes, persistAndDeliverAlert } from "./poller";
 import {
@@ -59,13 +60,34 @@ const withSourceHealth = async <T>(run: () => Promise<T>): Promise<T> => {
   }
 };
 
-/** Fields whose change is worth saving even when it isn't worth an alert. */
-const differs = (previous: EventRecord, next: DiscoveredEvent): boolean =>
+const sameList = (a: string[] | undefined, b: string[] | undefined): boolean => {
+  const left = a ?? [];
+  const right = b ?? [];
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+};
+
+const samePrice = (a: number | null | undefined, b: number | null | undefined): boolean =>
+  // numeric columns can come back as strings.
+  (a === null || a === undefined ? null : Number(a)) === (b === null || b === undefined ? null : Number(b));
+
+/**
+ * Fields whose change is worth saving even when it isn't worth an alert.
+ * A new support act or a new price range is rewritten (quietly). The image
+ * is only filled in when the row has none, since Ticketmaster's image URLs
+ * churn without the picture changing.
+ */
+export const differs = (previous: EventRecord, next: DiscoveredEvent): boolean =>
   previous.title !== next.title ||
   previous.venue !== next.venue ||
   previous.artist_name !== next.artist_name ||
   (previous.start_time ? new Date(previous.start_time).getTime() : null) !==
-    (next.start_time ? new Date(next.start_time).getTime() : null);
+    (next.start_time ? new Date(next.start_time).getTime() : null) ||
+  previous.dedupe_key !== next.dedupe_key ||
+  !sameList(previous.lineup, next.lineup) ||
+  !samePrice(previous.price_min, next.price_min) ||
+  !samePrice(previous.price_max, next.price_max) ||
+  (previous.price_currency ?? null) !== (next.price_currency ?? null) ||
+  (!previous.image_url && Boolean(next.image_url));
 
 /**
  * Save one rule's search results for its user and alert on what changed.
@@ -86,10 +108,18 @@ export const applyRuleEvents = async (
   );
   const previousById = new Map(existing.map((event) => [event.source_event_id, event]));
 
+  // A show the user already has from another source (an artist watch's
+  // Songkick row, say) stays that row; the artist's own Ticketmaster poll
+  // upgrades it.
+  const unseen = unique.filter((event) => !previousById.has(event.source_event_id));
+  const otherSources =
+    unseen.length > 0 ? await listCrossSourceCandidatesInWindow(rule.user_id, "ticketmaster", unseen) : [];
+
   const changes: Array<{ event: DiscoveredEvent; previous: EventRecord | null; alertTypes: AlertType[] }> = [];
   for (const event of unique) {
     const previous = previousById.get(event.source_event_id) ?? null;
     if (previous?.watch_artist_id) continue;
+    if (!previous && findCrossSourceMatch(event, otherSources)) continue;
     const alertTypes = getAlertTypes(previous, event);
     if (previous && alertTypes.length === 0 && !differs(previous, event)) continue;
     changes.push({ event, previous, alertTypes });

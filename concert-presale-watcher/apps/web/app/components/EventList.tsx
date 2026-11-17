@@ -1,8 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Bell, ChevronDown, ListMusic, Plus, RefreshCw } from "lucide-react";
+import {
+  ArrowUpRight,
+  Bell,
+  CalendarPlus,
+  Check,
+  ChevronDown,
+  Ellipsis,
+  EyeOff,
+  ListMusic,
+  Plus,
+  RefreshCw,
+  Star,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StageScene } from "@/components/stage-scene";
 import { Dot, StatusDot } from "@/components/status-dot";
@@ -17,7 +37,9 @@ import {
   statusLabel,
   statusTone,
 } from "@/lib/eventDisplay";
-import { relativeTime } from "@/lib/format";
+import type { FeedView, UserState } from "@/lib/feedQuery";
+import { lineupText, priceRange, relativeTime } from "@/lib/format";
+import { googleCalendarUrl, showTiming, upcomingSaleWindows } from "@/lib/ics";
 import type { AlertRecord, EventRecord } from "@/lib/types";
 
 /** Show the listing title only when it adds something beyond artist and venue. */
@@ -49,6 +71,138 @@ function EventDate({ value }: { value: string | null }) {
   );
 }
 
+/** Source artwork, when there is some. Drops out quietly if the image fails. */
+function ShowImage({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    // Remote source artwork at a fixed thumbnail size; next/image would need
+    // every ticketing CDN listed in next.config for no real gain here.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="float-right ml-4 hidden size-12 rounded-md border object-cover sm:block"
+    />
+  );
+}
+
+const stateLabel: Record<Exclude<UserState, "hidden">, string> = {
+  interested: "Interested",
+  going: "Going",
+};
+
+function UserStateMark({ state }: { state: EventRecord["user_state"] }) {
+  if (state !== "interested" && state !== "going") return null;
+  const Icon = state === "going" ? Check : Star;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 text-[13px] leading-5 whitespace-nowrap",
+        state === "going" ? "text-foreground" : "text-muted-foreground",
+      )}
+    >
+      <Icon aria-hidden="true" className="size-3.5" />
+      {stateLabel[state]}
+    </span>
+  );
+}
+
+const browserTimeZone = (): string | undefined => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return undefined;
+  }
+};
+
+interface ShowActionsProps {
+  event: EventRecord;
+  onSetUserState?: (event: EventRecord, state: UserState | null) => void;
+}
+
+/** Interested, going, calendar and hide, for one show. */
+function ShowActions({ event, onSetUserState }: ShowActionsProps) {
+  const [now] = useState(() => new Date());
+  const state = event.user_state ?? null;
+  const showName = `${event.artist_name}${event.venue ? ` at ${event.venue}` : ""}`;
+  const canCalendar =
+    showTiming(event.start_time) !== null || upcomingSaleWindows(event, now).length > 0;
+  const timeZone = browserTimeZone();
+  const googleUrl = googleCalendarUrl(event, timeZone);
+  const icsUrl = `/api/events/${encodeURIComponent(event.id)}/calendar${
+    timeZone ? `?tz=${encodeURIComponent(timeZone)}` : ""
+  }`;
+
+  const toggle = (next: Exclude<UserState, "hidden">) =>
+    onSetUserState?.(event, state === next ? null : next);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={`Actions for ${showName}`}>
+          <Ellipsis aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {onSetUserState && state !== "hidden" ? (
+          <>
+            <DropdownMenuCheckboxItem
+              checked={state === "interested"}
+              onCheckedChange={() => toggle("interested")}
+            >
+              Interested
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={state === "going"}
+              onCheckedChange={() => toggle("going")}
+            >
+              Going
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        {canCalendar ? (
+          <DropdownMenuItem asChild>
+            <a href={icsUrl} download>
+              <CalendarPlus aria-hidden="true" />
+              Download calendar file
+            </a>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem disabled>
+            <CalendarPlus aria-hidden="true" />
+            No date to add yet
+          </DropdownMenuItem>
+        )}
+        {googleUrl ? (
+          <DropdownMenuItem asChild>
+            <a href={googleUrl} target="_blank" rel="noreferrer">
+              <ArrowUpRight aria-hidden="true" />
+              Add to Google Calendar
+            </a>
+          </DropdownMenuItem>
+        ) : null}
+        {onSetUserState ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => onSetUserState(event, state === "hidden" ? null : "hidden")}
+            >
+              <EyeOff aria-hidden="true" />
+              {state === "hidden" ? "Show in feed again" : "Hide from feed"}
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 interface EventRowProps {
   event: EventRecord;
   alerts: AlertRecord[];
@@ -56,13 +210,23 @@ interface EventRowProps {
   foundBy?: string | null;
   expanded: boolean;
   onToggleExpanded: () => void;
+  onSetUserState?: (event: EventRecord, state: UserState | null) => void;
 }
 
-function EventRow({ event, alerts, foundBy, expanded, onToggleExpanded }: EventRowProps) {
+function EventRow({
+  event,
+  alerts,
+  foundBy,
+  expanded,
+  onToggleExpanded,
+  onSetUserState,
+}: EventRowProps) {
   const latestAlert = alerts[0];
   const title = extraTitle(event);
   const timelineId = `timeline-${event.id}`;
   const windows = event.sale_windows ?? [];
+  const lineup = lineupText(event.lineup, event.artist_name);
+  const price = priceRange(event.price_min, event.price_max, event.price_currency);
 
   return (
     <li className="grid grid-cols-[56px_minmax(0,1fr)] sm:grid-cols-[64px_minmax(0,1fr)_auto]">
@@ -70,12 +234,16 @@ function EventRow({ event, alerts, foundBy, expanded, onToggleExpanded }: EventR
 
       {/* The perforation: the row's date tears off like a ticket stub. */}
       <div className="min-w-0 border-l border-dashed py-4 pr-4 pl-4 sm:pl-5">
+        {event.image_url ? <ShowImage src={event.image_url} /> : null}
         <p className="flex min-w-0 items-baseline gap-2">
           <span className="truncate text-[15px] leading-5 font-medium">{event.artist_name}</span>
           {title ? (
             <span className="hidden truncate text-[13px] text-muted-foreground md:inline">{title}</span>
           ) : null}
         </p>
+        {lineup ? (
+          <p className="mt-0.5 truncate text-[13px] leading-5 text-muted-foreground">{lineup}</p>
+        ) : null}
         <p className="mt-0.5 truncate text-[13px] leading-5 text-muted-foreground">
           {placeLine(event) || "Venue to be announced"}
           {/* A venue watch's name is already the venue on the line, so only say it otherwise. */}
@@ -170,22 +338,74 @@ function EventRow({ event, alerts, foundBy, expanded, onToggleExpanded }: EventR
       </div>
 
       <div className="col-start-2 flex items-center justify-between gap-3 border-l border-dashed px-4 pb-4 sm:col-start-auto sm:flex-col sm:items-end sm:justify-start sm:border-l-0 sm:py-4 sm:pr-5 sm:pl-0">
-        <StatusDot tone={statusTone[event.status]}>{statusLabel[event.status]}</StatusDot>
-        {event.ticket_url ? (
-          <Button asChild variant="outline" size="sm">
-            <a
-              href={event.ticket_url}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`Tickets for ${event.artist_name}${event.venue ? ` at ${event.venue}` : ""} (opens in new tab)`}
-            >
-              Tickets
-              <ArrowUpRight aria-hidden="true" className="text-muted-foreground" />
-            </a>
-          </Button>
-        ) : null}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 sm:flex-col sm:items-end">
+          <StatusDot tone={statusTone[event.status]}>{statusLabel[event.status]}</StatusDot>
+          <UserStateMark state={event.user_state} />
+          {price ? (
+            <span className="tabular font-mono text-xs leading-5 text-muted-foreground">
+              <span className="sr-only">Price </span>
+              {price}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1">
+          {event.ticket_url ? (
+            <Button asChild variant="outline" size="sm">
+              <a
+                href={event.ticket_url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Tickets for ${event.artist_name}${event.venue ? ` at ${event.venue}` : ""} (opens in new tab)`}
+              >
+                Tickets
+                <ArrowUpRight aria-hidden="true" className="text-muted-foreground" />
+              </a>
+            </Button>
+          ) : null}
+          <ShowActions event={event} onSetUserState={onSetUserState} />
+        </div>
       </div>
     </li>
+  );
+}
+
+export interface FeedNoticeState {
+  message: string;
+  /** Puts things back as they were. Absent when there's nothing to undo. */
+  undo?: () => void;
+}
+
+/** One line under the toolbar after hiding or unhiding a show, with an undo. */
+export function FeedNotice({
+  notice,
+  onDismiss,
+}: {
+  notice: FeedNoticeState | null;
+  onDismiss: () => void;
+}) {
+  return (
+    <div role="status" aria-live="polite" className={cn(!notice && "sr-only")}>
+      {notice ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-card py-1.5 pr-1.5 pl-4 text-[13px] leading-5">
+          <span className="min-w-0 truncate">{notice.message}</span>
+          <span className="flex shrink-0 items-center gap-1">
+            {notice.undo ? (
+              <Button variant="outline" size="xs" onClick={notice.undo}>
+                Undo
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground"
+              onClick={onDismiss}
+            >
+              Dismiss
+            </Button>
+          </span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -268,25 +488,77 @@ interface EventListProps {
   alertsByEventId: Map<string, AlertRecord[]>;
   /** Labels for venue and area watches, by rule id. */
   ruleLabelById?: Map<string, string>;
-  totalEvents?: number;
+  /** Whether the user has any shows at all, in any view. */
+  hasAnyEvents?: boolean;
+  /** Shows matching the current view, search and tab, loaded or not. */
+  matchingCount?: number;
+  view?: FeedView;
+  /** A search, source filter or tab other than All is on. */
+  filtered?: boolean;
   loading?: boolean;
   hasArtists?: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  onSetUserState?: (event: EventRecord, state: UserState | null) => void;
   onOpenWatchlist?: () => void;
   onClearFilter?: () => void;
 }
+
+const emptyCopy = (
+  view: FeedView,
+  filtered: boolean,
+  hasAnyEvents: boolean,
+): { title: string; body: string } => {
+  if (filtered) {
+    return {
+      title: "Nothing matches",
+      body: "No shows here match this search or filter. Try another, or clear them.",
+    };
+  }
+  if (view === "past") {
+    return {
+      title: "No past shows",
+      body: "Shows move here a few hours after they start.",
+    };
+  }
+  if (view === "hidden") {
+    return {
+      title: "No hidden shows",
+      body: "Shows you hide from the feed are listed here, so you can bring them back.",
+    };
+  }
+  if (hasAnyEvents) {
+    return {
+      title: "No upcoming shows",
+      body: "Everything you follow is in the past or hidden. New dates show up after the next daily check.",
+    };
+  }
+  return {
+    title: "No shows found yet",
+    body: "Nothing you follow has upcoming shows in the sources yet. New dates show up after the next daily check.",
+  };
+};
 
 export default function EventList({
   events,
   alertsByEventId,
   ruleLabelById,
-  totalEvents,
+  hasAnyEvents: hasAnyEventsProp,
+  matchingCount,
+  view = "upcoming",
+  filtered = false,
   loading,
   hasArtists,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  onSetUserState,
   onOpenWatchlist,
   onClearFilter,
 }: EventListProps) {
   const [expandedEventIds, setExpandedEventIds] = useState<Set<string>>(() => new Set());
-  const hasAnyEvents = (totalEvents ?? events.length) > 0;
+  const hasAnyEvents = hasAnyEventsProp ?? events.length > 0;
 
   const toggleExpanded = (eventId: string) => {
     setExpandedEventIds((current) => {
@@ -298,23 +570,18 @@ export default function EventList({
   };
 
   if (!loading && events.length === 0) {
-    if (!hasArtists && !hasAnyEvents && onOpenWatchlist) {
+    if (!hasArtists && !hasAnyEvents && !filtered && view === "upcoming" && onOpenWatchlist) {
       return <Onboarding onOpenWatchlist={onOpenWatchlist} />;
     }
 
+    const copy = emptyCopy(view, filtered, hasAnyEvents);
     return (
       <div className="flex flex-col items-center rounded-xl border border-dashed px-6 py-12 text-center">
-        <p className="text-sm font-medium">
-          {hasAnyEvents ? "Nothing matches this filter" : "No shows found yet"}
-        </p>
-        <p className="mt-1 max-w-sm text-[13px] leading-5 text-muted-foreground">
-          {hasAnyEvents
-            ? "Try another filter, or refresh to queue a new check."
-            : "Nothing you follow has upcoming shows in the sources yet. New dates show up after the next daily check."}
-        </p>
-        {hasAnyEvents && onClearFilter ? (
+        <p className="text-sm font-medium">{copy.title}</p>
+        <p className="mt-1 max-w-sm text-[13px] leading-5 text-muted-foreground">{copy.body}</p>
+        {filtered && onClearFilter ? (
           <Button variant="outline" size="sm" className="mt-4" onClick={onClearFilter}>
-            Show all shows
+            Clear search and filters
           </Button>
         ) : null}
       </div>
@@ -322,29 +589,48 @@ export default function EventList({
   }
 
   return (
-    <ul
-      id="event-feed"
-      tabIndex={-1}
-      aria-busy={loading}
-      aria-label="Shows"
-      className="divide-y rounded-xl border bg-card outline-none"
-    >
-      {loading
-        ? Array.from({ length: 5 }, (_, i) => <SkeletonRow key={i} />)
-        : events.map((event) => (
-            <EventRow
-              key={event.id}
-              event={event}
-              alerts={alertsByEventId.get(event.id) ?? []}
-              foundBy={
-                !event.watch_artist_id && event.watch_rule_id
-                  ? ruleLabelById?.get(event.watch_rule_id)
-                  : null
-              }
-              expanded={expandedEventIds.has(event.id)}
-              onToggleExpanded={() => toggleExpanded(event.id)}
-            />
-          ))}
-    </ul>
+    <div className="grid gap-4">
+      <ul
+        id="event-feed"
+        tabIndex={-1}
+        aria-busy={loading}
+        aria-label="Shows"
+        className="divide-y rounded-xl border bg-card outline-none"
+      >
+        {loading
+          ? Array.from({ length: 5 }, (_, i) => <SkeletonRow key={i} />)
+          : events.map((event) => (
+              <EventRow
+                key={event.id}
+                event={event}
+                alerts={alertsByEventId.get(event.id) ?? []}
+                foundBy={
+                  !event.watch_artist_id && event.watch_rule_id
+                    ? ruleLabelById?.get(event.watch_rule_id)
+                    : null
+                }
+                expanded={expandedEventIds.has(event.id)}
+                onToggleExpanded={() => toggleExpanded(event.id)}
+                onSetUserState={onSetUserState}
+              />
+            ))}
+      </ul>
+
+      {!loading && (hasMore || (matchingCount ?? 0) > events.length) ? (
+        <div className="flex flex-col items-center gap-2">
+          {matchingCount !== undefined ? (
+            <p className="text-[13px] text-muted-foreground">
+              Showing <span className="tabular">{events.length}</span> of{" "}
+              <span className="tabular">{Math.max(matchingCount, events.length)}</span>
+            </p>
+          ) : null}
+          {hasMore && onLoadMore ? (
+            <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loadingMore}>
+              {loadingMore ? "Loading" : "Load more"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import { env } from "../env";
 import type { NormalizedEvent, WatchArtist } from "../types";
-import { asIsoOrNull, buildDedupeKey } from "../utils";
+import { asIsoOrNull, buildDedupeKey, foldText } from "../utils";
 import type { SourceAdapter } from "./types";
 
 interface SongkickEvent {
@@ -11,7 +11,29 @@ interface SongkickEvent {
   venue?: { displayName?: string };
   location?: { city?: string };
   status?: string;
+  performance?: Array<{
+    displayName?: string;
+    billing?: string;
+    billingIndex?: number;
+    artist?: { displayName?: string };
+  }>;
 }
+
+/** Supporting acts in billing order; headliners and the followed artist are left out. */
+export const songkickLineup = (event: SongkickEvent, artistName: string): string[] => {
+  const followed = foldText(artistName).trim();
+  const seen = new Set<string>();
+  return [...(event.performance ?? [])]
+    .sort((a, b) => (a.billingIndex ?? 0) - (b.billingIndex ?? 0))
+    .filter((performance) => performance.billing !== "headline")
+    .map((performance) => (performance.artist?.displayName ?? performance.displayName ?? "").trim())
+    .filter((name) => {
+      const key = foldText(name).trim();
+      if (!key || key === followed || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
 
 interface SongkickResponse {
   resultsPage?: { results?: { event?: SongkickEvent[] } };
@@ -48,7 +70,9 @@ const fetchForArtist = async (artist: WatchArtist): Promise<NormalizedEvent[]> =
       status: event.status === "cancelled" ? "cancelled" : "scheduled",
       on_sale_start: null,
       sale_windows: [],
-      dedupe_key: buildDedupeKey(artist.name, event.venue?.displayName ?? null, startTime),
+      // Songkick's events API has no images or prices.
+      lineup: songkickLineup(event, artist.name),
+      dedupe_key: buildDedupeKey(artist.name, event.venue?.displayName ?? null, startTime, event.start?.date),
       raw_json: event,
     };
   });

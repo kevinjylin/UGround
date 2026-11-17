@@ -13,6 +13,8 @@ export const watchRuleSchema = z.discriminatedUnion("kind", [
     city: optionalText(120),
     state: optionalText(80),
     country: z.string().trim().length(2).default("US"),
+    /** Miles from `city`. Ignored without a city. */
+    radiusMiles: z.number().int().min(1).max(500).optional(),
   }),
   z.object({
     kind: z.literal("venue"),
@@ -42,6 +44,8 @@ export const legacyWatchArtistSchema = z.object({
   city: optionalText(120),
   state: optionalText(80),
   country: z.string().trim().length(2).default("US"),
+  /** Miles from `city`. Ignored without a city. */
+  radiusMiles: z.number().int().min(1).max(500).optional(),
 });
 
 export const listLimitSchema = z.coerce.number().int().min(1).max(200);
@@ -50,11 +54,14 @@ export const searchQuerySchema = z.string().trim().min(2).max(100);
 export const spotifyImportSchema = z.object({
   artistIds: z.union([z.string().max(4000), z.array(z.string().max(100)).max(50)]).optional(),
   playlistUrl: z.string().trim().url().max(500).optional(),
+  /** Import from the Spotify account connected for this import (followed and top artists). */
+  account: z.boolean().optional(),
   selectedArtistIds: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
   city: optionalText(120),
   state: optionalText(80),
   country: z.string().trim().length(2).default("US"),
-}).refine((value) => value.artistIds || value.playlistUrl, {
+  radiusMiles: z.number().int().min(1).max(500).optional(),
+}).refine((value) => value.artistIds || value.playlistUrl || value.account, {
   message: "Provide Spotify artist IDs or a public playlist URL.",
 });
 

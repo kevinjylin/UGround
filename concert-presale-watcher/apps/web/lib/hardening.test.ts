@@ -100,3 +100,21 @@ test("alert migration allows every alert type the poller emits", async () => {
   }
   assert.match(migration, /#variable_conflict use_column/);
 });
+
+test("reminder migration allows every alert type and channel, and locks down what it adds", async () => {
+  const migration = await readFile(
+    new URL("../../../supabase/migrations/20261116000100_alert_reminders_and_preferences.sql", import.meta.url),
+    "utf8",
+  );
+  const { ALL_ALERT_TYPES, ALERT_CHANNELS } = await import("./alertPreferences");
+  for (const alertType of ALL_ALERT_TYPES) {
+    assert.ok(migration.includes(`'${alertType}'`), `${alertType} missing from alerts_alert_type_check`);
+  }
+  for (const channel of ALERT_CHANNELS) {
+    assert.ok(migration.includes(`'${channel}'`), `${channel} missing from the delivery channel check`);
+  }
+  assert.match(migration, /alter table public\.notification_preferences enable row level security/);
+  assert.match(migration, /revoke all on table public\.notification_preferences from anon, authenticated/);
+  assert.match(migration, /revoke all on function public\.list_sale_window_reminders\(timestamptz, timestamptz, integer\) from public, anon, authenticated/);
+  assert.match(migration, /revoke all on function public\.mark_artist_source_baselined\(uuid, text\) from public, anon, authenticated/);
+});

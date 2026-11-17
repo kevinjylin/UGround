@@ -3,6 +3,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { Instrument_Serif } from "next/font/google";
 import localFont from "next/font/local";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { siteUrl } from "@/lib/siteUrl";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -21,13 +22,35 @@ const instrumentSerif = Instrument_Serif({
   variable: "--font-instrument-serif",
 });
 
+const description =
+  "Follow artists, venues, and cities. UGround checks Ticketmaster, Songkick, and Bandsintown every day and alerts you by email, Discord, or SMS when a show is announced, a presale opens, or tickets go on sale.";
+
 export const metadata: Metadata = {
+  metadataBase: siteUrl(),
+  applicationName: "UGround",
   title: {
     default: "UGround · Ticket alerts for the artists you follow",
     template: "%s · UGround",
   },
-  description:
-    "Follow artists, venues, and cities. UGround checks Ticketmaster, Songkick, and Bandsintown every day and alerts you by email, Discord, or SMS when a show is announced, a presale opens, or tickets go on sale.",
+  description,
+  openGraph: {
+    type: "website",
+    siteName: "UGround",
+    title: "UGround · Ticket alerts for the artists you follow",
+    description,
+    url: "/",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "UGround · Ticket alerts for the artists you follow",
+    description,
+  },
+  appleWebApp: {
+    capable: true,
+    title: "UGround",
+    statusBarStyle: "black",
+  },
 };
 
 export const viewport: Viewport = {

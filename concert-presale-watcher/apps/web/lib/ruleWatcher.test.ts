@@ -47,7 +47,7 @@ const storedEvent = (sourceEventId: string, fields: Record<string, unknown> = {}
   sale_windows: [
     { kind: "public", name: "Public sale", url: `https://tm.test/${sourceEventId}`, starts_at: "2026-11-06T16:00:00.000Z", ends_at: null },
   ],
-  dedupe_key: "k",
+  dedupe_key: "horsegirl::metro::2027-03-14",
   last_seen_at: "",
   created_at: "",
   updated_at: "",
@@ -272,4 +272,29 @@ test("a venue Ticketmaster doesn't list is deferred, not failed", async () => {
   });
   const outcome = await runVenueJob(job("venue", "venue-1"));
   assert.equal(outcome.kind, "unresolved");
+});
+
+test("an area doesn't add a second copy of a show the user has from another source", async () => {
+  reset({
+    rules: [areaRule()],
+    stored: [
+      storedEvent("sk-1", {
+        source_slug: "songkick",
+        watch_rule_id: null,
+        watch_artist_id: "w1",
+        venue: "Metro Chicago",
+        start_time: "2027-03-14T00:00:00.000Z",
+        dedupe_key: "horsegirl::metro-chicago::2027-03-13",
+      }),
+    ],
+    tmEvents: [tmEvent("e1", "Horsegirl"), tmEvent("e2", "Ratboys")],
+  });
+
+  const outcome = await runLocationJob(job("location", "rule-area"));
+
+  const [upsert] = callsTo("POST", "/events?");
+  assert.deepEqual((upsert!.body as Array<{ source_event_id: string }>).map((row) => row.source_event_id), ["e2"]);
+  const lookup = callsTo("GET", "/events?").find((call) => call.url.includes("source_slug=neq.ticketmaster"));
+  assert.ok(lookup, "other sources are checked once for the batch");
+  assert.deepEqual(outcome, { kind: "done", saved: 1, alerts: 1 });
 });

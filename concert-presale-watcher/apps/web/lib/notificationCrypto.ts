@@ -2,8 +2,10 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   randomBytes,
   randomInt,
+  timingSafeEqual,
 } from "node:crypto";
 import { env } from "./env";
 
@@ -52,7 +54,10 @@ export const decryptSecret = (encrypted: string | null): string | null => {
     throw new Error("Unsupported encrypted notification setting format");
   }
 
-  const decipher = createDecipheriv(algorithm, getEncryptionKey(), Buffer.from(iv, "base64"));
+  // Require the full 16-byte tag; a shortened one weakens tamper detection.
+  const decipher = createDecipheriv(algorithm, getEncryptionKey(), Buffer.from(iv, "base64"), {
+    authTagLength: 16,
+  });
   decipher.setAuthTag(Buffer.from(tag, "base64"));
 
   return Buffer.concat([
@@ -75,4 +80,27 @@ export const createSmsConfirmationCode = (): string => {
 
 export const createExpiry = (minutes: number): string => {
   return new Date(Date.now() + minutes * 60 * 1000).toISOString();
+};
+
+// Unsubscribe links: "<user id>.<signature>", signed with a key derived from
+// the settings encryption key so no extra secret is needed. They don't
+// expire, because an old email's link must keep working.
+const unsubscribeSignature = (userId: string): string =>
+  createHmac("sha256", getEncryptionKey())
+    .update(`uground:unsubscribe-email:v1:${userId}`)
+    .digest("base64url")
+    .slice(0, 32);
+
+export const createUnsubscribeToken = (userId: string): string =>
+  `${userId}.${unsubscribeSignature(userId)}`;
+
+/** The user id the token was issued for, or null when it doesn't verify. */
+export const verifyUnsubscribeToken = (token: string): string | null => {
+  const separator = token.lastIndexOf(".");
+  if (separator <= 0) return null;
+  const userId = token.slice(0, separator);
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) return null;
+  const given = Buffer.from(token.slice(separator + 1));
+  const expected = Buffer.from(unsubscribeSignature(userId));
+  return given.length === expected.length && timingSafeEqual(given, expected) ? userId : null;
 };

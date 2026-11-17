@@ -2,7 +2,10 @@ import { isValidDiscordWebhookUrl } from "./discordWebhook";
 import { env } from "./env";
 import { logger } from "./logger";
 
-export const sendDiscordMessage = async (webhookUrl: string, message: string): Promise<boolean> => {
+/** Plain text, or a message with embeds (see buildDiscordMessage). */
+export type DiscordBody = string | { content: string; embeds?: unknown[] };
+
+export const sendDiscordMessage = async (webhookUrl: string, message: DiscordBody): Promise<boolean> => {
   // Defense in depth: the URL is validated at input time, but legacy DB rows
   // or future code paths could still hand us an unvetted URL. Refusing here
   // means an attacker can never get the server to fetch an arbitrary host.
@@ -16,9 +19,11 @@ export const sendDiscordMessage = async (webhookUrl: string, message: string): P
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      content: message,
-    }),
+    body: JSON.stringify(
+      typeof message === "string"
+        ? { content: message }
+        : { ...message, allowed_mentions: { parse: [] } },
+    ),
     cache: "no-store",
   });
 
@@ -29,6 +34,7 @@ export const sendEmailMessage = async (
   to: string,
   subject: string,
   message: string,
+  options: { html?: string; headers?: Record<string, string> } = {},
 ): Promise<boolean> => {
   if (!env.resendApiKey || !env.alertFromEmail) {
     return false;
@@ -45,6 +51,8 @@ export const sendEmailMessage = async (
       to: [to],
       subject,
       text: message,
+      ...(options.html ? { html: options.html } : {}),
+      ...(options.headers ? { headers: options.headers } : {}),
     }),
     cache: "no-store",
   });

@@ -4,6 +4,7 @@ import { validationErrorResponse } from "../../../lib/apiValidation";
 import { getCurrentUserId } from "../../../lib/auth";
 import { marketCenter } from "../../../lib/locations";
 import { logger } from "../../../lib/logger";
+import { runFirstArtistCheck } from "../../../lib/poller";
 import { enforceRateLimit, getRequestIp } from "../../../lib/rateLimit";
 import { resolveTicketmasterVenue } from "../../../lib/ruleWatcher";
 import { createWatchArtist, createWatchRule, listWatchRules } from "../../../lib/supabase";
@@ -35,7 +36,10 @@ export async function POST(request: Request) {
         city: body.city,
         state: body.state,
         country: body.country.toUpperCase(),
+        radiusMiles: body.radiusMiles,
       });
+      // Quiet first check so the feed fills now. Bounded; never fails the add.
+      await runFirstArtistCheck(artist);
       const rules = await listWatchRules(userId);
       const rule = rules.find((item) => item.legacy_watch_artist_id === artist.id);
       return NextResponse.json({ rule }, { status: 201 });

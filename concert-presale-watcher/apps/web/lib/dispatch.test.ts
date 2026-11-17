@@ -51,6 +51,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => 
       ? json({ _embedded: { events: [] } })
       : json({ fault: { faultstring: "Invalid ApiKey" } }, state.ticketmasterStatus);
   }
+  if (url.includes("/rpc/list_sale_window_reminders")) return json([]);
   if (url.includes("/rpc/claim_poll_jobs")) {
     const next = state.queue.shift();
     return json(next ? [next] : []);
@@ -140,10 +141,20 @@ test("dispatcher runs artist jobs, skips unrunnable ones, and drains the queue",
     ),
   );
 
-  // An unconfigured source is pushed out about a day instead of retried within the hour.
-  const [patch] = patchesTo("/poll_jobs?id=eq.axs-job");
-  const nextPollAt = new Date((patch?.body as { next_poll_at: string }).next_poll_at).getTime();
-  assert.ok(nextPollAt - Date.now() > 23 * 3600 * 1000, "axs-job should be deferred a day");
+  // A job for a source with no credentials is dropped; sync re-adds it once configured.
+  assert.ok(
+    state.calls.some((call) => call.method === "DELETE" && call.url.includes("/poll_jobs?id=eq.axs-job")),
+  );
+  // Sync only builds jobs for sources that can run (only Ticketmaster has a key here).
+  assert.deepEqual(
+    [...new Set((sync?.body as Array<{ source_slug: string }>).map((row) => row.source_slug))],
+    ["ticketmaster"],
+  );
+  // A successful artist job is rescheduled on the quota-safe cadence.
+  const [tmPatch] = patchesTo("/poll_jobs?id=eq.tm-job");
+  assert.equal((tmPatch?.body as { cadence_seconds: number }).cadence_seconds, 12 * 3600);
+  // The reminder pass ran on this call.
+  assert.ok(state.calls.some((call) => call.url.includes("/rpc/list_sale_window_reminders")));
 
   // A venue nobody follows any more has its job removed.
   assert.ok(

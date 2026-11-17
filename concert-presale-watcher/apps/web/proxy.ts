@@ -15,6 +15,7 @@ const publicPaths = new Set([
   "/terms",
   "/api/health",
   "/api/notification-settings/confirm-email",
+  "/api/notification-settings/unsubscribe",
 ]);
 
 const isStaticAsset = (pathname: string): boolean => {

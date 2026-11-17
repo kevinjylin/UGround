@@ -9,7 +9,7 @@ interface LogoProps {
   wordmark?: boolean;
 }
 
-/** UGround's ember U, with staggered heights inspired by audio levels. */
+/** UGround's record-and-signal mark: open concentric grooves around a center. */
 export function LogoMark({ size = 20, className }: { size?: number; className?: string }) {
   return (
     <Image

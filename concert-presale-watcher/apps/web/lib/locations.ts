@@ -227,3 +227,78 @@ export const marketCenter = (
   );
   return market ? { latitude: market.latitude, longitude: market.longitude } : null;
 };
+
+/** Radius choices offered for areas and for artists that have a city, in miles. */
+export const RADIUS_OPTIONS = [10, 25, 50, 100] as const;
+export const DEFAULT_RADIUS_MILES = 50;
+
+/** Great-circle distance in miles. */
+export const milesBetween = (
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number => {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(a.latitude)) * Math.cos(toRadians(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 2 * 3958.8 * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+
+/** A place to watch around. Empty city and state mean anywhere. */
+export interface LocationValue {
+  city: string;
+  state: string;
+  country: string;
+  /** Only set when there's a city to measure from. */
+  radiusMiles: number | null;
+}
+
+export const ANYWHERE: LocationValue = { city: "", state: "", country: "US", radiusMiles: null };
+
+export const formatLocationValue = ({ city, state, country }: Pick<LocationValue, "city" | "state" | "country">): string => {
+  const parts = [city, state].map((part) => part.trim()).filter(Boolean);
+  if (parts.length > 0) return parts.join(", ");
+  return country.trim() && country.trim() !== "US" ? country.trim() : "";
+};
+
+/**
+ * Turn typed text into a location. A listed city or state written out in full
+ * ("Austin, TX", "Texas") resolves to it; anything else is taken as a city name.
+ */
+export const parseLocationText = (text: string, radiusMiles: number | null): LocationValue => {
+  const trimmed = text.trim();
+  if (!trimmed) return ANYWHERE;
+  const wanted = normalizeSearch(trimmed);
+  const byCity = US_CONCERT_MARKETS.filter((location) => normalizeSearch(location.city) === wanted);
+  const match =
+    [...US_CONCERT_MARKETS, ...US_STATE_SUGGESTIONS].find(
+      (location) =>
+        normalizeSearch(location.label) === wanted ||
+        (location.kind === "state" && location.state.toLowerCase() === wanted),
+    ) ?? (byCity.length === 1 ? byCity[0] : undefined);
+  const city = match ? match.city : trimmed;
+  const state = match ? match.state : "";
+  return {
+    city,
+    state,
+    country: "US",
+    radiusMiles: city ? (radiusMiles ?? DEFAULT_RADIUS_MILES) : null,
+  };
+};
+
+export const locationFromSuggestion = (location: LocationSuggestion, radiusMiles: number | null): LocationValue => ({
+  city: location.city,
+  state: location.state,
+  country: location.country,
+  radiusMiles: location.city ? (radiusMiles ?? DEFAULT_RADIUS_MILES) : null,
+});
+
+/** Request body fields for a location, as the watchlist and import routes take them. */
+export const locationRequestFields = (location: LocationValue) => ({
+  city: location.city || undefined,
+  state: location.state || undefined,
+  country: location.country || "US",
+  radiusMiles: location.city ? (location.radiusMiles ?? DEFAULT_RADIUS_MILES) : undefined,
+});

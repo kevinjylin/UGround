@@ -31,6 +31,11 @@ export const env = {
   twilioAccountSid: readEnv("TWILIO_ACCOUNT_SID"),
   twilioAuthToken: readEnv("TWILIO_AUTH_TOKEN"),
   twilioFromPhone: readEnv("TWILIO_FROM_PHONE"),
+  /** How often the dispatcher is expected to run. Daily (1440) by default. */
+  dispatchIntervalMinutes: Number(readEnv("DISPATCH_INTERVAL_MINUTES")) || 1440,
+  vapidPublicKey: readEnv("VAPID_PUBLIC_KEY"),
+  vapidPrivateKey: readEnv("VAPID_PRIVATE_KEY"),
+  vapidSubject: readEnv("VAPID_SUBJECT"),
 };
 
 export const hasSupabaseConfig = (): boolean => {

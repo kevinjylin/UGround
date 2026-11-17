@@ -27,7 +27,10 @@ export type AlertType =
   | "presale_announced"
   | "presale_opened"
   | "public_sale_announced"
-  | "public_sale_opened";
+  | "public_sale_opened"
+  /** Reminders from a stored sale window's start time. */
+  | "sale_opens_soon"
+  | "sale_open_now";
 
 export interface WatchRule {
   id: string;
@@ -110,7 +113,7 @@ export interface SourceStatus {
 export interface NotificationDelivery {
   id: string;
   alert_id: string;
-  channel: "discord" | "email" | "sms";
+  channel: "discord" | "email" | "sms" | "push";
   status: "pending" | "processing" | "sent" | "failed";
   attempts: number;
   next_attempt_at: string;
@@ -126,6 +129,12 @@ export interface WatchArtist {
   city: string | null;
   state: string | null;
   country: string;
+  /** How far from `city` a show can be and still count. Null means the default. */
+  radius_miles?: number | null;
+  /** Ticketmaster attraction this artist resolved to, once known. */
+  ticketmaster_attraction_id?: string | null;
+  /** When the attraction was last looked up, matched or not. */
+  ticketmaster_attraction_checked_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -165,6 +174,15 @@ export interface EventRecord {
   status: EventStatus;
   on_sale_start: string | null;
   sale_windows: SaleWindow[];
+  /** Enrichment from the source payload; null or absent when the source has none. */
+  image_url?: string | null;
+  price_min?: number | null;
+  price_max?: number | null;
+  price_currency?: string | null;
+  /** Other acts on the bill, headliner excluded. */
+  lineup?: string[];
+  /** What the user did with this show in their feed. */
+  user_state?: "interested" | "going" | "hidden" | null;
   dedupe_key: string;
   last_seen_at: string;
   created_at: string;
@@ -230,6 +248,17 @@ export interface NotificationSettingsResponse {
     confirmed: boolean;
     masked: string | null;
   };
+  /** Absent from older responses; the panel falls back to the defaults. */
+  preferences?: AlertPreferencesResponse;
+}
+
+export interface AlertPreferencesResponse {
+  timeZone: string | null;
+  reminderLeadMinutes: number;
+  quietHours: { enabled: boolean; start: string; end: string };
+  emailDigest: boolean;
+  /** Alert types per channel; a channel left out gets every type. */
+  channelAlertTypes: Partial<Record<"email" | "push" | "sms" | "discord", AlertType[]>>;
 }
 
 export interface NormalizedEvent {
@@ -248,6 +277,11 @@ export interface NormalizedEvent {
   status: EventStatus;
   on_sale_start: string | null;
   sale_windows?: SaleWindow[];
+  image_url?: string | null;
+  price_min?: number | null;
+  price_max?: number | null;
+  price_currency?: string | null;
+  lineup?: string[];
   dedupe_key: string;
   raw_json: unknown;
 }

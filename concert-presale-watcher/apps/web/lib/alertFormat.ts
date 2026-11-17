@@ -9,10 +9,13 @@ export const alertTypeLabel: Record<AlertType, string> = {
   presale_opened: "Presale opened",
   public_sale_announced: "On-sale date announced",
   public_sale_opened: "On sale",
+  sale_opens_soon: "Sale opens soon",
+  sale_open_now: "Sale open now",
 };
 
 export const channelLabel: Record<string, string> = {
   discord: "Discord",
   email: "Email",
   sms: "SMS",
+  push: "Push",
 };

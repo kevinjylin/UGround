@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { parseFeedRequest } from "@/lib/feedQuery";
 import DashboardPage from "../dashboard/page";
 
 const now = Date.now();
@@ -19,9 +20,9 @@ const base = {
 };
 
 const events = [
-  { ...base, id: "e1", source_slug: "ticketmaster", artist_name: "Fontaines D.C.", title: "Fontaines D.C. – Romance Tour", venue: "The Greek Theatre", city: "Los Angeles", state: "CA", start_time: on("2027-01-19T20:00:00-08:00"), ticket_url: "https://example.com/t1", status: "onsale", on_sale_start: null, last_seen_at: ago(12), updated_at: ago(90) },
+  { ...base, id: "e1", source_slug: "ticketmaster", artist_name: "Fontaines D.C.", title: "Fontaines D.C. – Romance Tour", venue: "The Greek Theatre", city: "Los Angeles", state: "CA", start_time: on("2027-01-19T20:00:00-08:00"), ticket_url: "https://example.com/t1", status: "onsale", on_sale_start: null, last_seen_at: ago(12), updated_at: ago(90), price_min: 49.5, price_max: 125, price_currency: "USD", lineup: ["Been Stellar", "Kneecap"], user_state: "going" },
   { ...base, id: "e2", source_slug: "ticketmaster", artist_name: "Geese", title: "Geese", venue: "Bowery Ballroom", city: "New York", state: "NY", start_time: on("2026-11-22T20:00:00-05:00"), ticket_url: "https://example.com/t2", status: "onsale", on_sale_start: null, last_seen_at: ago(12), updated_at: ago(300) },
-  { ...base, id: "e3", source_slug: "ticketmaster", artist_name: "MJ Lenderman", title: "MJ Lenderman and the Wind", venue: "The Echo", city: "Los Angeles", state: "CA", start_time: on("2026-12-04T20:00:00-08:00"), ticket_url: "https://example.com/t3", status: "onsale", on_sale_start: null, last_seen_at: ago(12), updated_at: ago(20) },
+  { ...base, id: "e3", source_slug: "ticketmaster", artist_name: "MJ Lenderman", title: "MJ Lenderman and the Wind", venue: "The Echo", city: "Los Angeles", state: "CA", start_time: on("2026-12-04T20:00:00-08:00"), ticket_url: "https://example.com/t3", status: "onsale", on_sale_start: null, last_seen_at: ago(12), updated_at: ago(20), price_min: 30, price_max: 30, price_currency: "USD" },
   { ...base, id: "e4", source_slug: "songkick", artist_name: "Hotline TNT", title: "Hotline TNT", venue: "Empty Bottle", city: "Chicago", state: "IL", start_time: on("2026-11-12T21:00:00-06:00"), ticket_url: "https://example.com/t4", status: "cancelled", on_sale_start: null, last_seen_at: ago(12), updated_at: ago(60 * 48) },
   { ...base, id: "e5", source_slug: "bandsintown", artist_name: "Slow Pulp", title: "Slow Pulp", venue: "9:30 Club", city: "Washington", state: "DC", start_time: on("2027-01-03T19:00:00-05:00"), ticket_url: "https://example.com/t5", status: "scheduled", on_sale_start: null, last_seen_at: ago(12), updated_at: ago(240) },
   { ...base, id: "e6", source_slug: "ticketmaster", artist_name: "Wednesday", title: "Wednesday: Bleeds Tour", venue: "Lincoln Hall", city: "Chicago", state: "IL", start_time: on("2026-12-21T20:00:00-06:00"), ticket_url: "https://example.com/t6", status: "scheduled", on_sale_start: on("2026-11-04T10:00:00-06:00"), last_seen_at: ago(12), updated_at: ago(420),
@@ -78,12 +79,80 @@ const sources = ["ticketmaster", "songkick", "bandsintown", "eventbrite"].map((s
   last_success_at: ago(12), last_failure_at: null, last_error: null, quota_remaining: null, stale_after_seconds: 3600, stale: false,
 }));
 
+type MockEvent = (typeof events)[number] & { user_state?: string | null };
+
+const PAST_GRACE_MS = 6 * 3_600_000;
+const viewOf = (event: MockEvent) =>
+  event.user_state === "hidden"
+    ? "hidden"
+    : event.start_time && new Date(event.start_time).getTime() < now - PAST_GRACE_MS
+      ? "past"
+      : "upcoming";
+const changedToday = (event: MockEvent) =>
+  alerts.some((a) => a.event_id === event.id && now - new Date(a.created_at).getTime() <= 86_400_000);
+const lastActivity = (event: MockEvent) =>
+  Math.max(
+    new Date(event.created_at).getTime(),
+    ...alerts.filter((a) => a.event_id === event.id).map((a) => new Date(a.created_at).getTime()),
+  );
+
+/** A rough stand-in for list_feed_events and feed_event_counts. */
+function mockFeed(url: string, store: MockEvent[]) {
+  const params = new URL(url, window.location.origin).searchParams;
+  const feed = parseFeedRequest(params);
+  const q = feed.q.toLowerCase();
+  const matches = store.filter(
+    (event) =>
+      (!q || [event.artist_name, event.venue, event.city].some((v) => v?.toLowerCase().includes(q))) &&
+      (!feed.source ||
+        (feed.source.kind === "artist"
+          ? Boolean(event.watch_artist_id) || !event.watch_rule_id
+          : event.watch_rule_id === feed.source.id)),
+  );
+  const inView = matches.filter((event) => viewOf(event) === feed.view);
+  const tab = (event: MockEvent, filter: string) =>
+    filter === "all" ||
+    (filter === "saved" ? event.user_state === "interested" || event.user_state === "going"
+      : filter === "changed_today" ? changedToday(event) : event.status === filter);
+  const sorted = inView
+    .filter((event) => tab(event, feed.filter))
+    .sort((a, b) =>
+      feed.sort === "artist_az"
+        ? a.artist_name.localeCompare(b.artist_name)
+        : feed.sort === "date_soonest"
+          ? (new Date(a.start_time).getTime() - new Date(b.start_time).getTime()) * (feed.view === "past" ? -1 : 1)
+          : lastActivity(b) - lastActivity(a),
+    );
+  const page = sorted.slice(feed.offset, feed.offset + feed.limit);
+  const upcoming = store.filter((event) => viewOf(event) === "upcoming");
+  const count = (filter: string) => inView.filter((event) => tab(event, filter)).length;
+  return {
+    events: page,
+    alerts: alerts.filter((a) => page.some((event) => event.id === a.event_id)),
+    hasMore: sorted.length > feed.offset + feed.limit,
+    ...(params.get("counts") === "1"
+      ? {
+          counts: {
+            all: count("all"), onsale: count("onsale"), scheduled: count("scheduled"),
+            changed_today: count("changed_today"), saved: count("saved"),
+            upcoming: matches.filter((e) => viewOf(e) === "upcoming").length,
+            past: matches.filter((e) => viewOf(e) === "past").length,
+            hidden: matches.filter((e) => viewOf(e) === "hidden").length,
+            upcoming_total: upcoming.length,
+            onsale_total: upcoming.filter((e) => e.status === "onsale").length,
+          },
+        }
+      : {}),
+  };
+}
+
 /** Answers the dashboard's /api calls with the sample data above. */
 function installMockApi(empty: boolean) {
   const w = window as unknown as { __ugroundMockApi?: boolean };
   if (w.__ugroundMockApi) return;
   w.__ugroundMockApi = true;
   const real = window.fetch.bind(window);
+  const store: MockEvent[] = empty ? [] : events.map((event) => ({ ...event }));
   const json = (body: unknown, status = 200) =>
     Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
   window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -91,11 +160,23 @@ function installMockApi(empty: boolean) {
     if (url.includes("/api/search/venues")) return json({ venues: venueResults });
     if (url.includes("/api/watchlist")) return json({ artists: empty ? [] : artists });
     if (url.includes("/api/watch-rules")) return json({ rules: empty ? [] : rules });
-    if (url.includes("/api/events")) return json({ events: empty ? [] : events });
+    const patch = /\/api\/events\/([^/?]+)$/.exec(url);
+    if (patch && init?.method === "PATCH") {
+      const event = store.find((item) => item.id === decodeURIComponent(patch[1]!));
+      if (!event) return json({ error: "Show not found" }, 404);
+      event.user_state = (JSON.parse(String(init.body)) as { state: string | null }).state;
+      return json({ event });
+    }
+    if (url.includes("/api/events")) return json(mockFeed(url, store));
     if (url.includes("/api/alerts")) return json({ alerts: empty ? [] : alerts });
     if (url.includes("/api/notification-settings")) return json({ settings });
     if (url.includes("/api/source-status")) return json({ sources });
     if (url.includes("/api/poll")) return json({ queued: true, queuedJobs: 6 }, 202);
+    if (url.includes("/api/profile")) {
+      return json({ home: { city: "Chicago", state: "IL", country: "US", radiusMiles: 50 } });
+    }
+    // Push needs server keys the preview doesn't have.
+    if (url.includes("/api/push/public-key")) return json({ configured: false, publicKey: null });
     return real(input, init);
   }) as typeof fetch;
 }

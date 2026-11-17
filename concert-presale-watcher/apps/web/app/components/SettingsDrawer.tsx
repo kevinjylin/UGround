@@ -9,6 +9,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { LocationValue } from "@/lib/locations";
 import type {
   ArtistSuggestion,
   NotificationSettingsResponse,
@@ -38,23 +39,22 @@ interface SettingsDrawerProps {
   artists: WatchArtist[];
   watchRules: WatchRule[];
   busy: boolean;
-  city: string;
-  stateRegion: string;
-  country: string;
+  /** Saved home location: the default for new artists and imports. */
+  home: LocationValue;
   notificationSettings: NotificationSettingsResponse | null;
   polling: boolean;
   lastPoll: PollResult | null;
   onClose: () => void;
-  onCityChange: (value: string) => void;
-  onStateChange: (value: string) => void;
-  onCountryChange: (value: string) => void;
-  onAddArtist: (name: string, spotifyId?: string) => Promise<void>;
+  onSaveHome: (next: LocationValue) => Promise<void>;
+  onAddArtist: (name: string, spotifyId: string | undefined, location: LocationValue) => Promise<void>;
   onRemoveArtist: (id: string) => Promise<void>;
+  onUpdateArtistLocation: (id: string, location: LocationValue) => Promise<void>;
   onAddWatchRule: (input: Record<string, unknown>) => Promise<void>;
   onRemoveWatchRule: (id: string) => Promise<void>;
-  onImportSpotify: (ids: string) => Promise<void>;
+  onImportSpotify: (ids: string, location: LocationValue) => Promise<void>;
   onPreviewSpotifyPlaylist: (url: string) => Promise<ArtistSuggestion[]>;
-  onImportSpotifyPlaylist: (url: string, artistIds: string[]) => Promise<void>;
+  onImportSpotifyPlaylist: (url: string, artistIds: string[], location: LocationValue) => Promise<void>;
+  onImportSpotifyAccount: (artistIds: string[], location: LocationValue) => Promise<void>;
   onPoll: () => Promise<void>;
   onSaveNotificationSettings: (input: {
     discordWebhook?: string | null;
@@ -78,23 +78,21 @@ export default function SettingsDrawer({
   artists,
   watchRules,
   busy,
-  city,
-  stateRegion,
-  country,
+  home,
   notificationSettings,
   polling,
   lastPoll,
   onClose,
-  onCityChange,
-  onStateChange,
-  onCountryChange,
+  onSaveHome,
   onAddArtist,
   onRemoveArtist,
+  onUpdateArtistLocation,
   onAddWatchRule,
   onRemoveWatchRule,
   onImportSpotify,
   onPreviewSpotifyPlaylist,
   onImportSpotifyPlaylist,
+  onImportSpotifyAccount,
   onPoll,
   onSaveNotificationSettings,
   onTestDiscord,
@@ -157,17 +155,14 @@ export default function SettingsDrawer({
             <div className="flex flex-col gap-8">
               <WatchlistPanel
                 busy={busy}
-                city={city}
-                stateRegion={stateRegion}
-                country={country}
-                onCityChange={onCityChange}
-                onStateChange={onStateChange}
-                onCountryChange={onCountryChange}
+                home={home}
+                onSaveHome={onSaveHome}
                 onAdd={onAddArtist}
                 onAddWatchRule={onAddWatchRule}
                 onImportSpotify={onImportSpotify}
                 onPreviewSpotifyPlaylist={onPreviewSpotifyPlaylist}
                 onImportSpotifyPlaylist={onImportSpotifyPlaylist}
+                onImportSpotifyAccount={onImportSpotifyAccount}
                 onPoll={onPoll}
                 polling={polling}
                 lastPoll={lastPoll}
@@ -188,6 +183,7 @@ export default function SettingsDrawer({
                   rules={watchRules}
                   onRemoveArtist={onRemoveArtist}
                   onRemoveRule={onRemoveWatchRule}
+                  onUpdateArtistLocation={onUpdateArtistLocation}
                   loading={busy}
                 />
               </section>

@@ -1,4 +1,16 @@
+import { z } from "zod";
+import {
+  ALERT_CHANNELS,
+  ALL_ALERT_TYPES,
+  type AlertPreferences,
+  formatClockTime,
+  isValidTimeZone,
+  parseClockTime,
+  REMINDER_LEAD_OPTIONS,
+  toAlertPreferences,
+} from "./alertPreferences";
 import { isValidDiscordWebhookUrl } from "./discordWebhook";
+import { logger } from "./logger";
 import {
   createEmailConfirmationToken,
   createExpiry,
@@ -13,7 +25,13 @@ import {
   consumeSmsConfirmationCode,
   upsertNotificationSettings,
 } from "./supabase";
+import {
+  getNotificationPreferences,
+  releaseDigestDeliveries,
+  upsertNotificationPreferences,
+} from "./store/alertStore";
 import type {
+  AlertPreferencesResponse,
   NotificationSettingsRecord,
   NotificationSettingsResponse,
 } from "./types";
@@ -146,12 +164,105 @@ export const getResolvedNotificationSettings = async (
   return decryptSettings(await getNotificationSettings(userId));
 };
 
+export const toAlertPreferencesResponse = (
+  preferences: AlertPreferences,
+): AlertPreferencesResponse => ({
+  timeZone: preferences.timeZone,
+  reminderLeadMinutes: preferences.reminderLeadMinutes,
+  quietHours: {
+    enabled: preferences.quietHours.enabled,
+    start: formatClockTime(preferences.quietHours.start),
+    end: formatClockTime(preferences.quietHours.end),
+  },
+  emailDigest: preferences.emailDigest,
+  channelAlertTypes: preferences.channelAlertTypes,
+});
+
+const loadPreferences = async (userId: string): Promise<AlertPreferences> =>
+  toAlertPreferences(
+    await getNotificationPreferences(userId).catch((error: unknown) => {
+      logger.error("[notification-settings] preference lookup failed; using defaults", error);
+      return null;
+    }),
+  );
+
 export const getNotificationSettingsResponse = async (
   userId: string,
 ): Promise<NotificationSettingsResponse> => {
-  return toNotificationSettingsResponse(
-    await getResolvedNotificationSettings(userId),
-  );
+  const [settings, preferences] = await Promise.all([
+    getResolvedNotificationSettings(userId),
+    loadPreferences(userId),
+  ]);
+  return {
+    ...toNotificationSettingsResponse(settings),
+    preferences: toAlertPreferencesResponse(preferences),
+  };
+};
+
+const clockTime = z
+  .string()
+  .refine((value) => parseClockTime(value) !== null, "Times must look like 22:00.");
+
+export const alertPreferencesSchema = z
+  .object({
+    timeZone: z
+      .string()
+      .max(64)
+      .refine(isValidTimeZone, "Time zone must be an IANA zone like America/Chicago.")
+      .nullable()
+      .optional(),
+    reminderLeadMinutes: z
+      .number()
+      .int()
+      .refine(
+        (value) => (REMINDER_LEAD_OPTIONS as readonly number[]).includes(value),
+        "Pick one of the offered reminder times.",
+      )
+      .optional(),
+    quietHours: z
+      .object({ enabled: z.boolean(), start: clockTime, end: clockTime })
+      .optional(),
+    emailDigest: z.boolean().optional(),
+    channelAlertTypes: z
+      .partialRecord(
+        z.enum(ALERT_CHANNELS),
+        z.array(z.enum(ALL_ALERT_TYPES as [string, ...string[]])).max(ALL_ALERT_TYPES.length).nullable(),
+      )
+      .optional(),
+  })
+  .strict();
+
+export type AlertPreferencesInput = z.infer<typeof alertPreferencesSchema>;
+
+/** Save the alert preferences that were sent; leave the rest as they are. */
+export const updateAlertPreferences = async (
+  userId: string,
+  input: AlertPreferencesInput,
+): Promise<AlertPreferencesResponse> => {
+  const current = await loadPreferences(userId);
+  const fields: Parameters<typeof upsertNotificationPreferences>[1] = {};
+  // Null means the browser didn't report one; keep what's saved.
+  if (input.timeZone) fields.time_zone = input.timeZone;
+  if (input.reminderLeadMinutes !== undefined) fields.reminder_lead_minutes = input.reminderLeadMinutes;
+  if (input.quietHours) {
+    fields.quiet_hours_enabled = input.quietHours.enabled;
+    fields.quiet_hours_start = parseClockTime(input.quietHours.start) as number;
+    fields.quiet_hours_end = parseClockTime(input.quietHours.end) as number;
+  }
+  if (input.emailDigest !== undefined) fields.email_digest = input.emailDigest;
+  if (input.channelAlertTypes) {
+    const merged: Record<string, string[]> = { ...current.channelAlertTypes };
+    for (const [channel, types] of Object.entries(input.channelAlertTypes)) {
+      // Null, or every type, means the channel gets everything.
+      if (types === null || types === undefined || types.length === ALL_ALERT_TYPES.length) delete merged[channel];
+      else merged[channel] = [...new Set(types)];
+    }
+    fields.channel_alert_types = merged;
+  }
+  if (Object.keys(fields).length === 0) return toAlertPreferencesResponse(current);
+  const saved = toAlertPreferences(await upsertNotificationPreferences(userId, fields));
+  if (current.emailDigest && !saved.emailDigest) await releaseDigestDeliveries(userId);
+  return toAlertPreferencesResponse(saved);
 };
 
 export const updateNotificationSettings = async (
@@ -237,7 +348,10 @@ export const updateNotificationSettings = async (
   }
 
   const saved = await upsertNotificationSettings(input);
-  return toNotificationSettingsResponse(decryptSettings(saved));
+  return {
+    ...toNotificationSettingsResponse(decryptSettings(saved)),
+    preferences: toAlertPreferencesResponse(await loadPreferences(userId)),
+  };
 };
 
 export const createEmailConfirmation = async (

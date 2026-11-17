@@ -30,7 +30,7 @@ const nextConfig = {
       "form-action 'self'",
       `script-src ${scriptSources}`,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://i.scdn.co https://images.unsplash.com",
+      "img-src 'self' data: blob: https://i.scdn.co https://images.unsplash.com https://*.ticketm.net https://*.bandsintown.com",
       `connect-src ${connectSources}`,
       "media-src 'self' blob:",
       "font-src 'self'",

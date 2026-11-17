@@ -257,3 +257,109 @@ export const getPublicPlaylistArtists = async (
 };
 
 export const spotifyArtistToSuggestion = artistToSuggestion;
+
+// ---------------------------------------------------------------------------
+// Connected account (authorization code flow, one-time import)
+// ---------------------------------------------------------------------------
+
+/** Spotify rejected the user's token: expired, revoked, or not allowed for this app. */
+export class SpotifyAccountError extends Error {
+  constructor(
+    public readonly reason: "expired" | "forbidden",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export const exchangeSpotifyCode = async (
+  code: string,
+  redirectUri: string,
+): Promise<{ accessToken: string; expiresIn: number }> => {
+  if (!env.spotifyClientId || !env.spotifyClientSecret) {
+    throw new Error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET");
+  }
+  const basic = Buffer.from(`${env.spotifyClientId}:${env.spotifyClientSecret}`).toString("base64");
+  const response = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+    }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Spotify code exchange failed (${response.status})`);
+  }
+  // The response also carries a refresh token. It is dropped here on purpose:
+  // the import is one-time and nothing is kept past the access token's cookie.
+  const body = (await response.json()) as SpotifyTokenResponse;
+  return { accessToken: body.access_token, expiresIn: body.expires_in };
+};
+
+const fetchWithUserToken = async <T>(url: string, token: string): Promise<T> => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (response.ok) return (await response.json()) as T;
+    if (response.status === 401) {
+      throw new SpotifyAccountError("expired", "Spotify access token expired");
+    }
+    if (response.status === 403) {
+      throw new SpotifyAccountError("forbidden", "Spotify refused access for this account");
+    }
+    if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      const retryAfterSeconds = Number(response.headers.get("Retry-After") ?? "0");
+      await wait(Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? Math.min(retryAfterSeconds, 5) * 1000 : 600);
+      continue;
+    }
+    throw new Error(`Spotify account request failed (${response.status})`);
+  }
+  throw new Error("Spotify account request failed after retries");
+};
+
+export interface SpotifyAccountArtist extends ArtistSuggestion {
+  followed: boolean;
+  top: boolean;
+}
+
+/** Most followed artists we list from one account, and how many top artists. */
+export const ACCOUNT_FOLLOWED_LIMIT = 50;
+export const ACCOUNT_TOP_LIMIT = 50;
+
+/**
+ * Artists the user follows on Spotify and their top artists, merged by id.
+ * Followed artists come first, sorted by name; top-only artists follow in
+ * Spotify's ranking.
+ */
+export const getSpotifyAccountArtists = async (token: string): Promise<SpotifyAccountArtist[]> => {
+  const [followed, top] = await Promise.all([
+    fetchWithUserToken<{ artists: { items: SpotifyArtist[] } }>(
+      `https://api.spotify.com/v1/me/following?type=artist&limit=${ACCOUNT_FOLLOWED_LIMIT}`,
+      token,
+    ),
+    fetchWithUserToken<{ items: SpotifyArtist[] }>(
+      `https://api.spotify.com/v1/me/top/artists?limit=${ACCOUNT_TOP_LIMIT}&time_range=medium_term`,
+      token,
+    ),
+  ]);
+  const topIds = new Set((top.items ?? []).map((artist) => artist.id));
+  const merged = new Map<string, SpotifyAccountArtist>();
+  const followedItems = [...(followed.artists?.items ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+  for (const artist of followedItems) {
+    if (!artist.id || !artist.name) continue;
+    merged.set(artist.id, { ...artistToSuggestion(artist), followed: true, top: topIds.has(artist.id) });
+  }
+  for (const artist of top.items ?? []) {
+    if (!artist.id || !artist.name || merged.has(artist.id)) continue;
+    merged.set(artist.id, { ...artistToSuggestion(artist), followed: false, top: true });
+  }
+  return [...merged.values()];
+};

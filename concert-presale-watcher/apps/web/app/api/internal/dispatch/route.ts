@@ -1,18 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { internalErrorResponse } from "../../../../lib/apiError";
-import { deliverAlertChannel } from "../../../../lib/alerts";
+import { deliverQueuedAlert } from "../../../../lib/alerts";
+import { runDigestPass } from "../../../../lib/digest";
+import { logger } from "../../../../lib/logger";
 import { isPollRequestAuthorized } from "../../../../lib/pollAuth";
 import { isSourceRunnable, runPollForArtist } from "../../../../lib/poller";
+import { runReminderPass } from "../../../../lib/reminders";
 import { runLocationJob, runVenueJob } from "../../../../lib/ruleWatcher";
+import {
+  addAlertSentChannel,
+  holdDeliveryById,
+  listAlertsByIds,
+  listDueDeliveries,
+} from "../../../../lib/store/alertStore";
 import {
   claimPollJobs,
   completePollJob,
   deferPollJob,
   deletePollJob,
-  getAlertById,
   getEventById,
-  listPendingDeliveries,
   RULE_JOB_SOURCES,
   syncPollJobs,
   updateDelivery,
@@ -21,9 +28,9 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 55;
 
-// Stop claiming new jobs after this long so the job in flight and the
-// delivery retries still finish inside maxDuration. Callers keep calling
-// until the response says the queue is drained.
+// Stop claiming new jobs after this long so the job in flight, the
+// reminders, and the delivery retries still finish inside maxDuration.
+// Callers keep calling until the response says the queue is drained.
 const JOB_TIME_BUDGET_MS = 30_000;
 
 type JobResult = {
@@ -31,6 +38,15 @@ type JobResult = {
   source: string;
   status: "succeeded" | "failed" | "skipped";
   error?: string;
+};
+
+const safely = async <T>(label: string, run: () => Promise<T>): Promise<T | { error: string }> => {
+  try {
+    return await run();
+  } catch (error) {
+    logger.error(`[dispatch] ${label} failed`, error);
+    return { error: (error as Error).message };
+  }
 };
 
 export async function POST(request: Request) {
@@ -44,6 +60,9 @@ export async function POST(request: Request) {
     const synced =
       new URL(request.url).searchParams.get("sync") === "1" ? await syncPollJobs() : null;
 
+    // Time-based reminders come first: they're cheap and time-sensitive.
+    const reminders = await safely("reminders", () => runReminderPass());
+
     const workerId = randomUUID();
     const results: JobResult[] = [];
     let drained = false;
@@ -53,16 +72,17 @@ export async function POST(request: Request) {
         drained = true;
         break;
       }
+      // A job for a source without credentials can't run. Drop it; ?sync=1
+      // adds it back once the source is configured.
+      if (!isSourceRunnable(job.source_slug)) {
+        await deletePollJob(job.id);
+        results.push({ id: job.id, source: job.source_slug, status: "skipped", error: `${job.source_slug} is not configured.` });
+        continue;
+      }
       if (job.target_type === "venue" || job.target_type === "location") {
-        // Only some sources can search by venue or area. Jobs for the rest
-        // can never run, so drop them instead of deferring forever.
+        // Only some sources can search by venue or area.
         if (!RULE_JOB_SOURCES.includes(job.source_slug)) {
           await deletePollJob(job.id);
-          results.push({ id: job.id, source: job.source_slug, status: "skipped" });
-          continue;
-        }
-        if (!isSourceRunnable(job.source_slug)) {
-          await deferPollJob(job, `${job.source_slug} is not configured.`);
           results.push({ id: job.id, source: job.source_slug, status: "skipped" });
           continue;
         }
@@ -93,16 +113,17 @@ export async function POST(request: Request) {
         results.push({ id: job.id, source: job.source_slug, status: "skipped" });
         continue;
       }
-      if (!isSourceRunnable(job.source_slug)) {
-        await deferPollJob(job, `${job.source_slug} is not configured.`);
-        results.push({ id: job.id, source: job.source_slug, status: "skipped" });
-        continue;
-      }
       try {
         const artistId = job.target_id.split(":").at(-1);
         if (!artistId) throw new Error("Invalid legacy poll target.");
-        await runPollForArtist(artistId, job.user_id, [job.source_slug]);
-        await completePollJob(job);
+        const outcome = await runPollForArtist(artistId, job.user_id, [job.source_slug]);
+        if (!outcome) {
+          await deletePollJob(job.id);
+          results.push({ id: job.id, source: job.source_slug, status: "skipped", error: "The artist is no longer followed." });
+          continue;
+        }
+        // Check more often while a followed show has a sale coming up.
+        await completePollJob({ ...job, cadence_seconds: outcome.cadenceSeconds });
         results.push({ id: job.id, source: job.source_slug, status: "succeeded" });
       } catch (error) {
         const message = (error as Error).message;
@@ -111,20 +132,36 @@ export async function POST(request: Request) {
       }
     }
 
-    const pendingDeliveries = await listPendingDeliveries(25);
+    const pendingDeliveries = await listDueDeliveries(25);
+    const alerts = new Map(
+      (await listAlertsByIds([...new Set(pendingDeliveries.map((delivery) => delivery.alert_id))])).map(
+        (alert) => [alert.id, alert],
+      ),
+    );
     const deliveryResults = [];
     for (const delivery of pendingDeliveries) {
       try {
-        const alert = await getAlertById(delivery.alert_id);
+        const alert = alerts.get(delivery.alert_id);
         const event = alert ? await getEventById(alert.event_id) : null;
         if (!alert || !event) throw new Error("Alert or event no longer exists.");
-        const sent = await deliverAlertChannel(delivery.channel, alert.alert_type, event);
-        await updateDelivery(delivery.id, {
-          sent,
-          error: sent ? undefined : "Provider rejected the retry.",
-          attempts: delivery.attempts + 1,
-        });
-        deliveryResults.push({ id: delivery.id, status: sent ? "sent" : "failed" });
+        const outcome = await deliverQueuedAlert(delivery.channel, alert, event);
+        if (outcome.kind === "held") {
+          await holdDeliveryById(delivery.id, outcome.reason, outcome.until);
+          deliveryResults.push({ id: delivery.id, status: "held" });
+        } else if (outcome.kind === "dropped") {
+          // Stop retrying: the destination or the show is gone.
+          await updateDelivery(delivery.id, { sent: false, error: outcome.reason, attempts: 5 });
+          deliveryResults.push({ id: delivery.id, status: "dropped", error: outcome.reason });
+        } else {
+          const sent = outcome.kind === "sent";
+          await updateDelivery(delivery.id, {
+            sent,
+            error: outcome.kind === "failed" ? outcome.error : undefined,
+            attempts: delivery.attempts + 1,
+          });
+          if (sent) await addAlertSentChannel(alert.id, alert.sent_channels, delivery.channel);
+          deliveryResults.push({ id: delivery.id, status: sent ? "sent" : "failed" });
+        }
       } catch (error) {
         const message = (error as Error).message;
         await updateDelivery(delivery.id, {
@@ -136,6 +173,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // The digest waits for the queue to drain so one run's alerts share an email.
+    const digest = drained ? await safely("digest", () => runDigestPass()) : null;
+
     const count = (status: JobResult["status"]) =>
       results.filter((result) => result.status === status).length;
     return NextResponse.json({
@@ -146,8 +186,10 @@ export async function POST(request: Request) {
       failed: count("failed"),
       skipped: count("skipped"),
       results,
+      reminders,
       deliveriesProcessed: deliveryResults.length,
       deliveryResults,
+      digest,
     });
   } catch (error) {
     return internalErrorResponse(error, "internal.dispatch");

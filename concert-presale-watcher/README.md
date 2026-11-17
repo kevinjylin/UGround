@@ -46,6 +46,9 @@ Set whichever integrations you want:
 - Canonical links: `APP_URL=https://www.uground.app`
 - Detailed health checks: `INTERNAL_HEALTH_SECRET`
 - Partner feeds: `SONGKICK_API_KEY`, `BANDSINTOWN_APP_ID`
+- Browser push: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, optional `VAPID_SUBJECT` (for example `mailto:you@yourdomain`). Generate the keys with `npx web-push generate-vapid-keys`. Without them the push channel shows as unavailable.
+- Dispatcher interval: `DISPATCH_INTERVAL_MINUTES` (default `1440`). Set it to how often `/api/internal/dispatch` is called, so sale reminders and the daily digest are timed correctly.
+- Connect Spotify: add `<APP_URL>/api/integrations/spotify/callback` to the Redirect URIs of the Spotify app. For local use Spotify only accepts `http://127.0.0.1:3000/...`, not `localhost`. While the Spotify app is in development mode, only accounts added under User Management can connect.
 
 Optional poll protection:
 
@@ -78,13 +81,17 @@ Open `http://localhost:3000`.
 ## API routes
 
 - `GET/POST /api/watchlist`
-- `DELETE /api/watchlist/:id`
+- `PATCH/DELETE /api/watchlist/:id` (PATCH changes an artist's location and radius)
 - `GET/POST /api/watch-rules`
 - `DELETE /api/watch-rules/:id`
+- `GET/PUT /api/profile` (saved home location)
 - `POST /api/watchlist/import-spotify`
 - `POST /api/integrations/spotify/import-preview`
-- `POST /api/integrations/spotify/import`
-- `GET /api/events`
+- `POST /api/integrations/spotify/import` (a playlist, or `account: true` after Connect Spotify)
+- `GET /api/integrations/spotify/start`, `GET /api/integrations/spotify/callback`, `GET /api/integrations/spotify/account-artists`
+- `GET /api/events` (paged feed: `view`, `filter`, `sort`, `q`, `source`, `limit`, `offset`, `counts=1`)
+- `PATCH /api/events/:id` (interested, going, hidden)
+- `GET /api/events/:id/calendar` (.ics download)
 - `GET /api/alerts`
 - `GET /api/search/venues` (Ticketmaster venue search for venue watches)
 - `GET /api/source-status`
@@ -94,6 +101,8 @@ Open `http://localhost:3000`.
 - `GET /api/notification-settings/confirm-email`
 - `POST /api/notification-settings/send-sms-confirmation`
 - `POST /api/notification-settings/confirm-sms`
+- `GET/POST /api/notification-settings/unsubscribe` (public, signed link in every alert email)
+- `GET /api/push/public-key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe`, `POST /api/push/status`, `POST /api/push/test`
 - `POST /api/poll` (authenticated refresh queue)
 - `POST /api/internal/dispatch` (secret-protected worker)
 - `GET /api/cron/poll` (compatibility dispatcher)
@@ -115,7 +124,8 @@ Open `http://localhost:3000`.
 Notes:
 
 - Supabase Auth protects the site and API with a `/login` page.
-- Apply the scheduler migration after setting `app.settings.dispatch_url` and `app.settings.cron_secret` in Supabase. It invokes `/api/internal/dispatch` every minute and the database queue applies adaptive per-target cadence.
+- Apply every file in `supabase/migrations` before deploying code that depends on it. The feed, the event save path and adding artists all use columns and functions from the `20261116` migrations and fail without them.
+- Optional per-minute scheduler: set `app.settings.dispatch_url` and `app.settings.cron_secret` in Supabase, run `20260609000200_schedule_dispatch.sql`, and set `DISPATCH_INTERVAL_MINUTES=1`. It calls `/api/internal/dispatch` every minute. Each watch still polls its source every 12 hours, or every 3 hours while a followed show has a sale in the next 3 days, which keeps Ticketmaster use inside its daily quota. Jobs are only created for sources that have credentials.
 - GitHub Actions `poll.yml` runs once daily at 03:17 UTC (8:17 PM PDT / 7:17 PM PST) and supports manual runs as a fallback to the primary Supabase scheduler. It calls the dispatcher repeatedly until the response reports `drained: true`; the first call passes `?sync=1`, which adds queue jobs for any followed artist that has none. Set the repository's `CRON_SECRET` secret to match the deployed app; the optional `POLL_URL` repository variable must point to the POST dispatcher endpoint.
 - A separately deployed worker can consume the same queue with `WORKER_POLL_URL=https://<your-domain>/api/internal/dispatch`, `POLL_SECRET`, and `POLL_INTERVAL_MINUTES`.
 
@@ -123,5 +133,9 @@ Notes:
 
 - User refreshes enqueue bounded work and never receive infrastructure secrets.
 - If alert provider keys or user destinations are missing, alerts are still stored in DB.
+- Artist watches match by Ticketmaster attraction, with a strict name match as the fallback. An artist's city searches a radius around it (50 miles by default) for the US markets in `lib/locations.ts`.
+- The first check of a newly followed artist saves its shows without alerting, and runs inline when one artist is added. Later checks alert on new and changed shows.
+- A show found by more than one source is saved once, preferring Ticketmaster.
+- Each dispatch run also sends sale reminders ("opens soon" and "open now") from the stored sale windows, and the daily email digest for users who chose it.
 - Venue and area watches use Ticketmaster only. A venue job is shared by everyone who follows that venue. An area tracks shows within a radius of a listed city whose public on-sale is still ahead. A rule's first check saves shows without alerts; later checks alert on new and changed shows.
 - Eventbrite, AXS, and DICE remain disabled until approved partner access or a documented public-page terms review is complete.

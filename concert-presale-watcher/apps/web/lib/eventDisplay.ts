@@ -34,6 +34,8 @@ export const alertTone: Record<AlertType, Tone> = {
   presale_opened: "positive",
   public_sale_announced: "brand",
   public_sale_opened: "positive",
+  sale_opens_soon: "brand",
+  sale_open_now: "positive",
 };
 
 /**
@@ -45,6 +47,11 @@ export const alertSummary = (alert: AlertRecord, event: EventRecord): string => 
     return `Now ${statusLabel[event.status].toLowerCase()}`;
   }
   if (alert.alert_type === "new_event") return "New show announced";
+  if (alert.alert_type === "sale_opens_soon" || alert.alert_type === "sale_open_now") {
+    const window = alert.payload?.sale_window as { name?: string } | undefined;
+    const name = window?.name?.trim() || "Sale";
+    return `${name} ${alert.alert_type === "sale_opens_soon" ? "opens soon" : "is open"}`;
+  }
   return alertTypeLabel[alert.alert_type];
 };
 

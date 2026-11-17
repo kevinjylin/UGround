@@ -1,4 +1,5 @@
 import { assertSupabaseConfig, env } from "./env";
+import { DEFAULT_CADENCE_SECONDS, runnableArtistSources } from "./pollCadence";
 import type {
   AlertRecord,
   AlertType,
@@ -32,6 +33,8 @@ interface CreateWatchArtistInput {
   city?: string;
   state?: string;
   country?: string;
+  /** Miles from `city`. Dropped when there's no city. */
+  radiusMiles?: number;
 }
 
 interface CreateAlertInput {
@@ -159,6 +162,7 @@ export const createWatchArtist = async (
     city: input.city ?? "",
     state: input.state ?? "",
     country: input.country ?? "US",
+    radius_miles: input.city ? (input.radiusMiles ?? null) : null,
   };
 
   const saved = await supabaseRequest<WatchArtist>(
@@ -198,6 +202,7 @@ export const createWatchArtist = async (
         city: saved.city || null,
         state: saved.state || null,
         country: saved.country,
+        radius_miles: saved.radius_miles ?? null,
         legacy_watch_artist_id: saved.id,
       }),
     },
@@ -304,13 +309,15 @@ export const deleteWatchRule = async (id: string, userId: string): Promise<void>
   );
 };
 
-const POLL_JOB_SOURCES = ["ticketmaster", "eventbrite", "songkick", "bandsintown", "axs", "dice"];
-
 /** Only Ticketmaster can search by venue or by area. */
 export const RULE_JOB_SOURCES = ["ticketmaster"];
 
-/** Venues change slowly; areas cost a heavier query, so they run less often. */
-const RULE_CADENCE_SECONDS = { venue: 1800, location: 3 * 3600 } as const;
+/** Both fit Ticketmaster's daily quota even with a per-minute dispatcher. */
+const RULE_CADENCE_SECONDS = { venue: DEFAULT_CADENCE_SECONDS, location: DEFAULT_CADENCE_SECONDS } as const;
+
+/** Rule sources that have credentials, so their jobs can run. */
+const runnableRuleSources = (): string[] =>
+  RULE_JOB_SOURCES.filter((slug) => runnableArtistSources().includes(slug));
 
 type PollJobRule = Pick<WatchRule, "id" | "user_id" | "kind" | "artist_id" | "venue_id" | "legacy_watch_artist_id">;
 
@@ -337,21 +344,22 @@ const pollJobRow = (
 
 const buildPollJobRows = (rule: PollJobRule, priority: number): PollJobRow[] => {
   if (rule.legacy_watch_artist_id) {
-    return POLL_JOB_SOURCES.map((sourceSlug) =>
+    // Only sources with credentials get jobs; sync adds the rest once configured.
+    return runnableArtistSources().map((sourceSlug) =>
       pollJobRow({
         source_slug: sourceSlug,
         target_type: "legacy_user",
         target_id: `${rule.user_id}:${rule.legacy_watch_artist_id}`,
         user_id: rule.user_id,
         priority,
-        cadence_seconds: 1800,
+        cadence_seconds: DEFAULT_CADENCE_SECONDS,
       }),
     );
   }
 
   // One job per venue, shared by everyone who follows it, so it has no owner.
   if (rule.kind === "venue" && rule.venue_id) {
-    return RULE_JOB_SOURCES.map((sourceSlug) =>
+    return runnableRuleSources().map((sourceSlug) =>
       pollJobRow({
         source_slug: sourceSlug,
         target_type: "venue",
@@ -364,7 +372,7 @@ const buildPollJobRows = (rule: PollJobRule, priority: number): PollJobRow[] => 
   }
 
   if (rule.kind === "location") {
-    return RULE_JOB_SOURCES.map((sourceSlug) =>
+    return runnableRuleSources().map((sourceSlug) =>
       pollJobRow({
         source_slug: sourceSlug,
         target_type: "location",
@@ -434,14 +442,14 @@ export const queueUserRefresh = async (userId: string): Promise<number> => {
         headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify(
           artists.flatMap((artist) =>
-            ["ticketmaster", "eventbrite"].map((sourceSlug) => ({
+            runnableArtistSources().map((sourceSlug) => ({
               source_slug: sourceSlug,
               target_type: "legacy_user",
               target_id: `${userId}:${artist.id}`,
               user_id: userId,
               priority: 100,
               next_poll_at: new Date().toISOString(),
-              cadence_seconds: 1800,
+              cadence_seconds: DEFAULT_CADENCE_SECONDS,
               lease_owner: null,
               lease_expires_at: null,
             })),
@@ -449,7 +457,7 @@ export const queueUserRefresh = async (userId: string): Promise<number> => {
         ),
       },
     );
-    return artists.length * 2;
+    return artists.length * runnableArtistSources().length;
   }
 
   // Upsert rather than PATCH so rules with no jobs yet get them too.
@@ -481,6 +489,7 @@ export const completePollJob = async (
       next_poll_at: error
         ? new Date(now.getTime() + Math.min(3600, 60 * 2 ** Math.min(job.attempts, 5)) * 1000).toISOString()
         : next,
+      cadence_seconds: job.cadence_seconds,
       lease_owner: null,
       lease_expires_at: null,
       last_error: error?.slice(0, 1000) ?? null,
@@ -642,6 +651,11 @@ export const upsertRuleEvents = async (
           status: row.status,
           on_sale_start: row.on_sale_start,
           sale_windows: row.sale_windows ?? [],
+          image_url: row.image_url ?? null,
+          price_min: row.price_min ?? null,
+          price_max: row.price_max ?? null,
+          price_currency: row.price_currency ?? null,
+          lineup: row.lineup ?? [],
           dedupe_key: row.dedupe_key,
           last_seen_at: now,
         })),
@@ -800,6 +814,12 @@ export const upsertEvent = async (
     status: normalized.status,
     on_sale_start: normalized.on_sale_start,
     sale_windows: normalized.sale_windows ?? [],
+    // Left out (not nulled) when a source has no such field, so it keeps what's stored.
+    image_url: normalized.image_url,
+    price_min: normalized.price_min,
+    price_max: normalized.price_max,
+    price_currency: normalized.price_currency,
+    lineup: normalized.lineup,
     dedupe_key: normalized.dedupe_key,
     last_seen_at: new Date().toISOString(),
   };
@@ -1026,13 +1046,29 @@ export const updateDelivery = async (
 };
 
 export const exportUserData = async (userId: string): Promise<Record<string, unknown>> => {
-  const [watchArtists, watchRules, events, alerts] = await Promise.all([
+  const [watchArtists, watchRules, events, alerts, profile] = await Promise.all([
     listWatchArtists(userId),
     listWatchRules(userId),
     listEvents(500, userId),
     listAlerts(500, userId),
+    supabaseRequest<unknown[]>(`/user_profiles?select=*&user_id=eq.${encodeURIComponent(userId)}`),
   ]);
-  return { watchArtists, watchRules, events, alerts };
+  // Browsers with push turned on. Endpoints and keys stay out: they only matter to the push service.
+  const pushSubscriptions = await supabaseRequest<unknown[]>(
+    `/push_subscriptions?select=id,user_agent_label,created_at,last_used_at&user_id=eq.${encodeURIComponent(userId)}`,
+  );
+  const notificationPreferences = await supabaseRequest<unknown[]>(
+    `/notification_preferences?select=*&user_id=eq.${encodeURIComponent(userId)}`,
+  );
+  return {
+    watchArtists,
+    watchRules,
+    events,
+    alerts,
+    profile: profile[0] ?? null,
+    pushSubscriptions,
+    notificationPreferences: notificationPreferences[0] ?? null,
+  };
 };
 
 export const deleteUserData = async (userId: string): Promise<void> => {
@@ -1042,6 +1078,9 @@ export const deleteUserData = async (userId: string): Promise<void> => {
     supabaseRequest<void>(`/alerts?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }),
     supabaseRequest<void>(`/notification_settings?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }),
     supabaseRequest<void>(`/watch_artists?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }),
+    supabaseRequest<void>(`/user_profiles?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }),
+    supabaseRequest<void>(`/push_subscriptions?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }),
+    supabaseRequest<void>(`/notification_preferences?user_id=eq.${encodeURIComponent(userId)}`, { method: "DELETE" }),
   ]);
   const response = await fetch(`${env.supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
     method: "DELETE",

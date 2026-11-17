@@ -1,6 +1,6 @@
 import { env } from "../env";
 import type { NormalizedEvent, WatchArtist } from "../types";
-import { asIsoOrNull, buildDedupeKey } from "../utils";
+import { asIsoOrNull, buildDedupeKey, foldText } from "../utils";
 import type { SourceAdapter } from "./types";
 
 interface BandsintownEvent {
@@ -9,7 +9,23 @@ interface BandsintownEvent {
   url?: string;
   datetime?: string;
   venue?: { name?: string; city?: string; region?: string; country?: string };
+  /** Every act on the bill, headliner first. */
+  lineup?: string[];
+  artist?: { image_url?: string; thumb_url?: string };
 }
+
+/** The bill minus its headliner and the followed artist. */
+export const bandsintownLineup = (event: BandsintownEvent, artistName: string): string[] => {
+  const followed = foldText(artistName).trim();
+  const [headliner, ...rest] = (event.lineup ?? []).map((name) => name.trim()).filter(Boolean);
+  const seen = new Set([followed, foldText(headliner ?? "").trim()]);
+  return rest.filter((name) => {
+    const key = foldText(name).trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 const fetchForArtist = async (artist: WatchArtist): Promise<NormalizedEvent[]> => {
   if (!env.bandsintownAppId) return [];
@@ -37,7 +53,11 @@ const fetchForArtist = async (artist: WatchArtist): Promise<NormalizedEvent[]> =
       status: "scheduled",
       on_sale_start: null,
       sale_windows: [],
-      dedupe_key: buildDedupeKey(artist.name, event.venue?.name ?? null, startTime),
+      // The artist photo, when the response embeds the artist. No prices.
+      image_url: event.artist?.image_url || null,
+      lineup: bandsintownLineup(event, artist.name),
+      // `datetime` is the venue's local time with no offset; its date is the show's day.
+      dedupe_key: buildDedupeKey(artist.name, event.venue?.name ?? null, startTime, event.datetime),
       raw_json: event,
     };
   });
